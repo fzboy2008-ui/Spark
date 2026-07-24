@@ -1,74 +1,57 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const InviteData = require('../models/InviteData');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('invite')
-        .setDescription('Invite tracking and event management system')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addSubcommand(s => s.setName('panel').setDescription('Open the invite control panel'))
-        .addSubcommand(s => s.setName('check').setDescription('Check event invites for a member').addUserOption(o => o.setName('user').setDescription('Target user')))
-        .addSubcommand(s => s.setName('lifetime').setDescription('Check lifetime invites for a member').addUserOption(o => o.setName('user').setDescription('Target user'))),
+        .setDescription('Clean invite tracker and leaderboard system')
+        .addSubcommand(s => s.setName('check').setDescription('Check invites for a member').addUserOption(o => o.setName('user').setDescription('Target user')))
+        .addSubcommand(s => s.setName('leaderboard').setDescription('View top 10 invite leaderboard')),
 
     async execute(interaction) {
         const sub = interaction.options.getSubcommand();
         const guildId = interaction.guild.id;
 
-        // PANEL COMMAND
-        if (sub === 'panel') {
+        if (sub === 'check') {
+            await interaction.deferReply();
+            const target = interaction.options.getUser('user') || interaction.user;
+            const data = await InviteData.findOne({ guildId, userId: target.id }) || { regular: 0, leaves: 0, fake: 0 };
+            const total = data.regular - data.leaves - data.fake;
+
             const embed = new EmbedBuilder()
-                .setTitle('📩 INVITE TRACKER DASHBOARD')
-                .setDescription('Select an action below to manage active event trackers, trigger dynamic leaderboards, or configure log feeds.')
-                .setColor('#5865F2')
+                .setTitle(`📊 Invite Profile: ${target.username}`)
+                .setDescription(`**Total Valid Invites:** \`${total}\`\n• Regular Joins: \`${data.regular}\`\n• Leaves: \`${data.leaves}\`\n• Fake/Alt: \`${data.fake}\``)
+                .setColor('#57f287')
                 .setTimestamp();
 
-            const row1 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_inv_start').setLabel('Start Event Tracker').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_inv_reset').setLabel('Reset Event Data').setStyle(ButtonStyle.Danger)
-            );
-
-            const row2 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_inv_guild_lb').setLabel('Guild Leaderboard').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('btn_inv_event_lb').setLabel('Invite Leaderboard').setStyle(ButtonStyle.Secondary)
-            );
-
-            const row3 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_inv_logs_cfg').setLabel('Setup Log Channel ID').setStyle(ButtonStyle.Secondary)
-            );
-
-            return await interaction.reply({ embeds: [embed], components: [row1, row2, row3] });
+            return interaction.editReply({ embeds: [embed] });
         }
 
-        // CHECK & LIFETIME COMMANDS (INSTANT RESPONSE WITH DEFER)
-        if (sub === 'check' || sub === 'lifetime') {
-            await interaction.deferReply(); // Isse 'Thinking...' safely handle ho jayega
+        if (sub === 'leaderboard') {
+            await interaction.deferReply();
+            const allData = await InviteData.find({ guildId });
+            const sorted = allData
+                .map(d => ({ userId: d.userId, total: d.regular - d.leaves - d.fake }))
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 10);
 
-            const target = interaction.options.getUser('user') || interaction.user;
-            const data = await InviteData.findOne({ guildId, userId: target.id }) || { eventRegular: 0, eventLeaves: 0, eventFake: 0, permRegular: 0, permLeaves: 0, permFake: 0 };
-            
-            const isLifetime = (sub === 'lifetime');
-            const reg = isLifetime ? data.permRegular : data.eventRegular;
-            const lvs = isLifetime ? data.permLeaves : data.eventLeaves;
-            const fk = isLifetime ? data.permFake : data.eventFake;
-            const total = reg - lvs - fk;
+            if (sorted.length === 0) {
+                return interaction.editReply({ content: '❌ No invite data recorded yet.' });
+            }
 
-            const card = 
-```text
-👤 User      : ${target.tag}
-📊 ${isLifetime ? 'Lifetime' : 'Event'}   : ${total} Invites
---------------------------------
-🟢 Regular   : ${reg}
-🔴 Leaves    : ${lvs}
-⚠️ Fake      : ${fk}
-```;
+            let desc = '';
+            const medals = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅', '🏅', '🏅', '🏅', '🏅'];
+            for (let i = 0; i < sorted.length; i++) {
+                desc += `${medals[i]} **#${i + 1}** <@${sorted.userId}> • **${sorted.total}** Invites\n`;
+            }
 
             const embed = new EmbedBuilder()
-                .setTitle(isLifetime ? '🏆 LIFETIME INVITE PROFILE' : '⚡ EVENT INVITE PROFILE')
-                .setDescription(card)
-                .setColor(isLifetime ? '#00FF00' : '#FFCC00');
+                .setTitle('🏆 Top 10 Server Invite Leaderboard')
+                .setDescription(desc)
+                .setColor('#fee75c')
+                .setTimestamp();
 
-            return await interaction.editReply({ embeds: [embed] });
+            return interaction.editReply({ embeds: [embed] });
         }
     }
 };
-                
