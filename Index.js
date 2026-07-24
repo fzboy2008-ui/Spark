@@ -10,7 +10,7 @@ const InviteData = require('./models/InviteData');
 const BotSettings = require('./models/BotSettings');
 
 const parser = new Parser();
-const guildInvites = new Map(); // Global invite cache memory
+const guildInvites = new Map();
 
 const PRIMARY_OWNER_ID = '1266728371719508062';
 
@@ -36,7 +36,7 @@ for (const file of commandFiles) {
 }
 
 client.once('ready', async () => {
-    console.log(`🔥 [SPARK CORE] ${client.user.tag} online successfully!`);
+    console.log(`🔥 [SPARK CORE] ${client.user.tag} online!`);
     if (process.env.MONGO_URI) {
         try { await mongoose.connect(process.env.MONGO_URI); console.log('📦 Connected to MongoDB.'); } catch (err) { console.error("Mongo Error:", err); }
     }
@@ -57,22 +57,21 @@ client.once('ready', async () => {
 async function isAuthorizedOwner(userId) {
     if (userId === PRIMARY_OWNER_ID) return true;
     const settings = await BotSettings.findOne({ settingKey: 'global' });
-    if (settings && settings.coOwners.includes(userId)) return true;
+    if (settings && settings.coOwners && settings.coOwners.includes(userId)) return true;
     return false;
 }
 
-// ================= DYNAMIC AUTO RESPONSE & SPARK CENTER INTERCEPTOR =================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     if (!message.guild && message.content.toLowerCase() === '!panel') {
         if (!(await isAuthorizedOwner(message.author.id))) {
-            return message.reply("❌ **Access Denied:** You are not authorized to use the Spark Developer Control Panel.");
+            return message.reply("❌ **Access Denied:** You are not authorized.");
         }
 
         const embed = new EmbedBuilder()
             .setTitle('💎 SPARK ELITE DEVELOPER COMMAND CENTER')
-            .setDescription('Welcome back, Chief. Select an operational module below to control active nodes, manage sub-owners, or oversee deployments.')
+            .setDescription('Welcome back, Chief. Select an operational module below to control active nodes or manage sub-owners.')
             .setColor('#2b2d31')
             .setTimestamp();
 
@@ -113,9 +112,7 @@ client.on('messageCreate', async (message) => {
                     }
                 }
             }
-        } catch (err) {
-            console.error("Spark Center DM Reply Error:", err);
-        }
+        } catch (err) {}
     }
 
     if (message.guild) {
@@ -123,7 +120,7 @@ client.on('messageCreate', async (message) => {
             const config = await GuildConfig.findOne({ guildId: message.guild.id });
             if (config && config.sparkCenterChannel && message.channel.id === config.sparkCenterChannel) {
                 const settings = await BotSettings.findOne({ settingKey: 'global' });
-                const recipientIds = [PRIMARY_OWNER_ID, ...(settings ? settings.coOwners : [])];
+                const recipientIds = [PRIMARY_OWNER_ID, ...(settings && settings.coOwners ? settings.coOwners : [])];
 
                 const bridgeEmbed = new EmbedBuilder()
                     .setTitle('📥 New Inbound Support Message')
@@ -171,11 +168,10 @@ client.on('messageCreate', async (message) => {
                 if (replyText.length > 0) responseEmbed.setDescription(replyText);
                 return message.reply({ embeds: [responseEmbed] });
             }
-        } catch (err) { console.error("Auto response exception:", err); }
+        } catch (err) {}
     }
 });
 
-// ================= WELCOME & INVITE TRACKER JOIN =================
 client.on('guildMemberAdd', async (member) => {
     try {
         const config = await GuildConfig.findOne({ guildId: member.guild.id });
@@ -227,21 +223,32 @@ client.on('guildMemberAdd', async (member) => {
         }
 
         if (inviter) {
+            const accountAgeDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
+            const isFake = accountAgeDays < 7;
+
             const invData = await InviteData.findOne({ guildId: member.guild.id, userId: inviter.id }) || new InviteData({ guildId: member.guild.id, userId: inviter.id });
-            invData.regular += 1;
+
+            if (isFake) invData.permFake += 1;
+            else invData.permRegular += 1;
+
+            if (invData.isEventActive) {
+                if (isFake) invData.eventFake += 1;
+                else invData.eventRegular += 1;
+            }
+
             await invData.save();
 
             if (config && config.inviteLogChannel) {
                 const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
                 if (logChan) {
-                    const lifetimeTotal = invData.regular - invData.leaves - invData.fake;
-                    const logCard = `👤 Member     : ${member.user.tag}\n🔗 Invited By : ${inviter.tag}\n--------------------------------\n📊 Total Invites: ${lifetimeTotal} (${invData.regular} Valid)`;
+                    const lifetimeTotal = invData.permRegular - invData.permLeaves - invData.permFake;
+                    const logCard = `👤 Member     : ${member.user.tag}\n🔗 Invited By : ${inviter.tag}\n--------------------------------\n📊 Lifetime Stats: ${lifetimeTotal} Total (${invData.permRegular} Reg | ${invData.permLeaves} Leaves)`;
                     const embed = new EmbedBuilder().setTitle('📥 MEMBER JOIN LOG').setDescription(logCard).setColor('#00FF00').setTimestamp();
                     await logChan.send({ embeds: [embed] }).catch(() => null);
                 }
             }
         }
-    } catch (err) { console.error(err); }
+    } catch (err) {}
 });
 
 client.on('guildMemberRemove', async (member) => {
@@ -251,10 +258,9 @@ client.on('guildMemberRemove', async (member) => {
             const chan = member.guild.channels.cache.get(config.totalMembersChan);
             if (chan) await chan.setName(`🪐 Total Members: ${member.guild.memberCount}`).catch(() => null);
         }
-    } catch (err) { console.error(err); }
+    } catch (err) {}
 });
 
-// ================= DYNAMIC INTERACTIONS (ROUTER) =================
 client.on('interactionCreate', async (interaction) => {
     try {
         const guildId = interaction.guild?.id;
@@ -272,11 +278,7 @@ client.on('interactionCreate', async (interaction) => {
 
             if (interaction.customId === 'dev_btn_servers') {
                 const guilds = client.guilds.cache.map(g => `• **${g.name}** (\`${g.id}\`) - ${g.memberCount} Members`);
-                const embed = new EmbedBuilder()
-                    .setTitle('🌐 Active Bot Deployment Nodes')
-                    .setDescription(guilds.length > 0 ? guilds.join('\n') : 'No servers connected.')
-                    .setColor('#5865F2');
-
+                const embed = new EmbedBuilder().setTitle('🌐 Active Bot Deployment Nodes').setDescription(guilds.length > 0 ? guilds.join('\n') : 'No servers connected.').setColor('#5865F2');
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('dev_btn_leave_prompt').setLabel('Remote Leave Server').setStyle(ButtonStyle.Danger).setEmoji('🚪'),
                     new ButtonBuilder().setCustomId('dev_btn_back').setLabel('Back to Panel').setStyle(ButtonStyle.Secondary)
@@ -295,13 +297,8 @@ client.on('interactionCreate', async (interaction) => {
                     return interaction.reply({ content: '❌ Only the Primary Owner can manage co-owners.', ephemeral: true });
                 }
                 const settings = await BotSettings.findOne({ settingKey: 'global' }) || { coOwners: [] };
-                const list = settings.coOwners.length > 0 ? settings.coOwners.map(id => `• <@${id}> (\`${id}\`)`).join('\n') : 'No co-owners assigned.';
-                
-                const embed = new EmbedBuilder()
-                    .setTitle('👥 Co-Owner Management')
-                    .setDescription(`**Primary Owner:** <@${PRIMARY_OWNER_ID}>\n\n**Current Co-Owners:**\n${list}`)
-                    .setColor('#fbee5c');
-
+                const list = settings.coOwners && settings.coOwners.length > 0 ? settings.coOwners.map(id => `• <@${id}> (\`${id}\`)`).join('\n') : 'No co-owners assigned.';
+                const embed = new EmbedBuilder().setTitle('👥 Co-Owner Management').setDescription(`**Primary Owner:** <@${PRIMARY_OWNER_ID}>\n\n**Current Co-Owners:**\n${list}`).setColor('#fbee5c');
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('dev_btn_add_owner').setLabel('Add Co-Owner').setStyle(ButtonStyle.Success).setEmoji('➕'),
                     new ButtonBuilder().setCustomId('dev_btn_remove_owner').setLabel('Remove Co-Owner').setStyle(ButtonStyle.Danger).setEmoji('➖'),
@@ -323,10 +320,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (interaction.customId === 'dev_btn_back') {
-                const embed = new EmbedBuilder()
-                    .setTitle('💎 SPARK ELITE DEVELOPER COMMAND CENTER')
-                    .setDescription('Select an operational module below to control active nodes or sub-owners.')
-                    .setColor('#2b2d31');
+                const embed = new EmbedBuilder().setTitle('💎 SPARK ELITE DEVELOPER COMMAND CENTER').setDescription('Select an operational module below.').setColor('#2b2d31');
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('dev_btn_servers').setLabel('Manage Servers').setStyle(ButtonStyle.Primary).setEmoji('🌐'),
                     new ButtonBuilder().setCustomId('dev_btn_coowners').setLabel('Manage Co-Owners').setStyle(ButtonStyle.Secondary).setEmoji('👥')
@@ -335,53 +329,146 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        if (interaction.isButton() && guildId) {
+        if (interaction.isModalSubmit() && !interaction.guild) {
+            await interaction.deferReply({ ephemeral: true });
+            if (interaction.customId === 'modal_dev_leave') {
+                const targetGuildId = interaction.fields.getTextInputValue('leave_guild_id').trim();
+                const targetGuild = client.guilds.cache.get(targetGuildId);
+                if (!targetGuild) return interaction.editReply({ content: '❌ Bot is not in a guild with that ID.' });
+                await targetGuild.leave();
+                return interaction.editReply({ content: `✅ Successfully left server: **${targetGuild.name}**` });
+            }
+            if (interaction.customId === 'modal_add_owner') {
+                const newId = interaction.fields.getTextInputValue('new_owner_id').trim();
+                let settings = await BotSettings.findOne({ settingKey: 'global' });
+                if (!settings) settings = new BotSettings({ settingKey: 'global', coOwners: [] });
+                if (!settings.coOwners.includes(newId)) { settings.coOwners.push(newId); await settings.save(); }
+                return interaction.editReply({ content: `✅ Successfully added <@${newId}> as a Co-Owner.` });
+            }
+            if (interaction.customId === 'modal_remove_owner') {
+                const remId = interaction.fields.getTextInputValue('rem_owner_id').trim();
+                let settings = await BotSettings.findOne({ settingKey: 'global' });
+                if (settings && settings.coOwners) {
+                    settings.coOwners = settings.coOwners.filter(id => id !== remId);
+                    await settings.save();
+                }
+                return interaction.editReply({ content: `✅ Successfully removed <@${remId}> from Co-Owners.` });
+            }
+            return;
+        }
+
+        if (!guildId) return;
+
+                if (interaction.isButton()) {
             if (interaction.customId === 'setup_spark_center') {
                 const modal = new ModalBuilder().setCustomId('modal_spark_center_setup').setTitle('Setup Spark Center Bridge');
                 modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('spark_chan_id').setLabel('Target Channel ID (Admin Only)').setRequired(true).setStyle(TextInputStyle.Short)));
                 return interaction.showModal(modal);
             }
 
+            if (interaction.customId === 'btn_inv_start') {
+                await InviteData.updateMany({ guildId }, { isEventActive: true, eventRegular: 0, eventLeaves: 0, eventFake: 0 });
+                return await interaction.reply({ content: '🚀 **Event Tracker Started!** Counting new joins from now.', ephemeral: true });
+            }
+
+            if (interaction.customId === 'btn_inv_reset') {
+                await InviteData.updateMany({ guildId }, { eventRegular: 0, eventLeaves: 0, eventFake: 0 });
+                return await interaction.reply({ content: '🔄 **Event Data Reset to 0!**', ephemeral: true });
+            }
+
+            if (interaction.customId === 'btn_inv_guild_lb') {
+                await interaction.deferReply();
+                const fetchedInvites = await interaction.guild.invites.fetch().catch(() => null);
+                let inviteMap = new Map();
+                if (fetchedInvites) {
+                    fetchedInvites.forEach(inv => {
+                        if (inv.inviter) {
+                            const prev = inviteMap.get(inv.inviter.id) || 0;
+                            inviteMap.set(inv.inviter.id, prev + inv.uses);
+                        }
+                    });
+                }
+                const dbData = await InviteData.find({ guildId });
+                dbData.forEach(d => {
+                    const dbTotal = d.permRegular - d.permLeaves - d.permFake;
+                    const inviterUses = inviteMap.get(d.userId) || 0;
+                    inviteMap.set(d.userId, Math.max(dbTotal, inviterUses));
+                });
+                const sorted = Array.from(inviteMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
+                if (sorted.length === 0) return await interaction.followUp({ content: '❌ No active invite links found in this server.' });
+                let str = '```text\n';
+                const medals = ['🥇', '🥈', '🥉', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️'];
+                for (let i = 0; i < sorted.length; i++) {
+                    const u = await interaction.client.users.fetch(sorted[i][0]).catch(() => null);
+                    str += `${medals[i]} ${i+1}. ${(u ? u.username : 'Unknown').padEnd(12, ' ')} • ${sorted[i][1]} Invites\n`;
+                }
+                str += '```';
+                const embed = new EmbedBuilder().setTitle('🏆 GUILD LIFETIME LEADERBOARD').setDescription(str).setColor('#00FF00');
+                return await interaction.followUp({ embeds: [embed] });
+            }
+            
+            if (interaction.customId === 'btn_inv_event_lb') {
+                await interaction.deferReply();
+                const allData = await InviteData.find({ guildId });
+                const sorted = allData.map(d => ({ userId: d.userId, total: d.eventRegular - d.eventLeaves - d.eventFake, reg: d.eventRegular, lvs: d.eventLeaves }))
+                    .sort((a,b) => b.total - a.total).slice(0, 10);
+                let str = '```text\n';
+                const medals = ['🥇', '🥈', '🥉', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️'];
+                for (let i = 0; i < sorted.length; i++) {
+                    const u = await interaction.client.users.fetch(sorted[i].userId).catch(() => null);
+                    str += `${medals[i]} ${i+1}. ${(u ? u.username : 'Unknown').padEnd(12, ' ')} • ${sorted[i].total} Total (${sorted[i].reg} Reg | ${sorted[i].lvs} Lvs)\n`;
+                }
+                str += '```';
+                const embed = new EmbedBuilder().setTitle('⚡ ACTIVE EVENT LEADERBOARD').setDescription(str).setColor('#FFCC00');
+                return await interaction.followUp({ embeds: [embed] });
+            }
+
+            if (interaction.customId === 'btn_inv_logs_cfg') {
+                const modal = new ModalBuilder().setCustomId('modal_inv_logs').setTitle('Setup Invite Log Channel');
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('inv_log_input').setLabel('Invite Logs Channel ID').setRequired(true).setStyle(TextInputStyle.Short)));
+                return await interaction.showModal(modal);
+            }
+
             if (interaction.customId === 'setup_store_cfg') {
                 const modal = new ModalBuilder().setCustomId('modal_store_cfg').setTitle('1. Basic Setup & Stock');
                 modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_name').setLabel('Server Name').setRequired(true).setStyle(TextInputStyle.Short).setPlaceholder('e.g., SparkleMc')),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_role').setLabel('Admin Role ID').setRequired(true).setStyle(TextInputStyle.Short).setPlaceholder('e.g., 123456789012345678')),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_logs').setLabel('Logs Channel ID').setRequired(true).setStyle(TextInputStyle.Short).setPlaceholder('e.g., 123456789012345678')),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_items').setLabel('Items & Stock Setup').setRequired(true).setStyle(TextInputStyle.Paragraph).setPlaceholder('Ranks:Elite-100 || Keys:Shine Key-50'))
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_name').setLabel('Server Name').setRequired(true).setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_role').setLabel('Admin Role ID').setRequired(true).setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_logs').setLabel('Logs Channel ID').setRequired(true).setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cfg_items').setLabel('Items & Stock Setup').setRequired(true).setStyle(TextInputStyle.Paragraph))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_store_visual') {
                 const modal = new ModalBuilder().setCustomId('modal_store_visual').setTitle('2. Visual Panel Deploy');
                 modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pnl_title').setLabel('Embed Header Title').setRequired(true).setStyle(TextInputStyle.Short).setValue('🛒 SERVER STOREFRONT')),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pnl_desc').setLabel('Embed Description Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue('Select a category below to view items.')),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pnl_title').setLabel('Embed Header Title').setRequired(true).setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pnl_desc').setLabel('Embed Description Text').setRequired(true).setStyle(TextInputStyle.Paragraph)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pnl_banner').setLabel('Banner Image CDN Link').setRequired(false).setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pnl_chan').setLabel('Target Channel ID').setRequired(true).setStyle(TextInputStyle.Short))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_store_execution') {
                 const modal = new ModalBuilder().setCustomId('modal_store_execution').setTitle('3. Console & Commands');
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('exe_console').setLabel('Console Channel ID').setRequired(true).setStyle(TextInputStyle.Short)),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('exe_cmds').setLabel('Command Mappings').setRequired(true).setStyle(TextInputStyle.Paragraph).setPlaceholder('Elite:lp user {name} parent set elite || Shine Key:givekey {name} shine 1'))
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('exe_cmds').setLabel('Command Mappings').setRequired(true).setStyle(TextInputStyle.Paragraph))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_store_dms') {
                 const store = await GuildStore.findOne({ guildId });
                 const modal = new ModalBuilder().setCustomId('modal_store_dms').setTitle('4. DM Alert Templates');
                 modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_app').setLabel('Approved DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmApproved || "📦 Order Approved [{{server}}]! Item: {{item}}")),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_rej').setLabel('Rejected DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmRejected || "❌ Order Rejected [{{server}}]! Item: {{item}}")),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_pend').setLabel('12h Pending Reminder DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmPendingReminder || "⏰ Pending Order Reminder [{{server}}]! Item: {{item}}"))
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_app').setLabel('Approved DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmApproved || "📦 Order Approved")),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_rej').setLabel('Rejected DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmRejected || "❌ Order Rejected")),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_pend').setLabel('Pending Reminder DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmPendingReminder || "⏰ Reminder"))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_stats_btn') {
@@ -390,7 +477,7 @@ client.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('stats_total_input').setLabel('Total Members Voice ID').setRequired(true).setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('stats_online_input').setLabel('Online Players Voice ID').setRequired(true).setStyle(TextInputStyle.Short))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_youtube_btn') {
@@ -400,7 +487,7 @@ client.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('yt_live_chan_input').setLabel('Live Alert Channel ID').setRequired(true).setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('yt_upload_chan_input').setLabel('Upload Alert Channel ID').setRequired(true).setStyle(TextInputStyle.Short))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_welcome_btn') {
@@ -412,7 +499,7 @@ client.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('w_thumb').setLabel('Banner Image URL').setRequired(false).setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('w_dm').setLabel('DM Text').setRequired(false).setStyle(TextInputStyle.Paragraph))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_tickets_btn' || interaction.customId === 'setup_ticket_btn') {
@@ -424,15 +511,13 @@ client.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t_logs').setLabel('LOGS_ID, STAFF_ROLE_ID').setRequired(true).setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t_msg').setLabel('Welcome Message').setRequired(true).setStyle(TextInputStyle.Paragraph))
                 );
-                return interaction.showModal(modal);
+                return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'setup_auto_btn') {
                 const modal = new ModalBuilder().setCustomId('modal_auto_response').setTitle('💬 Auto Response Core');
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('auto_input_box').setLabel('Format: trigger:reply || trigger:reply').setPlaceholder('e.g., ip:play.sparklemc.in').setRequired(true).setStyle(TextInputStyle.Paragraph))
-                );
-                return interaction.showModal(modal);
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('auto_input_box').setLabel('Format: trigger:reply || trigger:reply').setRequired(true).setStyle(TextInputStyle.Paragraph)));
+                return await interaction.showModal(modal);
             }
 
             const config = await GuildConfig.findOne({ guildId });
@@ -498,7 +583,7 @@ client.on('interactionCreate', async (interaction) => {
                 }
 
                 if (interaction.customId === 'btn_order_delete') {
-                    await interaction.reply({ content: '🗑️ Closing space arrays permanently in 5 seconds...' });
+                    await interaction.reply({ content: '🗑️ Closing room permanently in 5 seconds...' });
                     await OrderTicket.deleteOne({ channelId: interaction.channel.id });
                     setTimeout(() => interaction.channel.delete().catch(() => null), 5000);
                 }
@@ -508,32 +593,16 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isModalSubmit()) {
             await interaction.deferReply({ ephemeral: true });
 
-            if (interaction.customId === 'modal_dev_leave') {
-                const targetGuildId = interaction.fields.getTextInputValue('leave_guild_id').trim();
-                const targetGuild = client.guilds.cache.get(targetGuildId);
-                if (!targetGuild) return interaction.editReply({ content: '❌ Invalid Guild ID.' });
-                await targetGuild.leave();
-                return interaction.editReply({ content: `✅ Left server: **${targetGuild.name}**` });
-            }
-
-            if (interaction.customId === 'modal_add_owner') {
-                const newId = interaction.fields.getTextInputValue('new_owner_id').trim();
-                let settings = await BotSettings.findOne({ settingKey: 'global' }) || new BotSettings({ settingKey: 'global', coOwners: [] });
-                if (!settings.coOwners.includes(newId)) { settings.coOwners.push(newId); await settings.save(); }
-                return interaction.editReply({ content: `✅ Added <@${newId}> as Co-Owner.` });
-            }
-
-            if (interaction.customId === 'modal_remove_owner') {
-                const remId = interaction.fields.getTextInputValue('rem_owner_id').trim();
-                let settings = await BotSettings.findOne({ settingKey: 'global' });
-                if (settings) { settings.coOwners = settings.coOwners.filter(id => id !== remId); await settings.save(); }
-                return interaction.editReply({ content: `✅ Removed <@${remId}>.` });
-            }
-
             if (interaction.customId === 'modal_spark_center_setup') {
                 const chanId = interaction.fields.getTextInputValue('spark_chan_id').trim();
                 await GuildConfig.findOneAndUpdate({ guildId }, { sparkCenterChannel: chanId }, { upsert: true });
-                return interaction.editReply({ content: `✅ Spark Center linked to <#${chanId}>.` });
+                return interaction.editReply({ content: `✅ **Spark Center** successfully linked to <#${chanId}>.` });
+            }
+
+            if (interaction.customId === 'modal_inv_logs') {
+                const channelId = interaction.fields.getTextInputValue('inv_log_input').trim();
+                await GuildConfig.findOneAndUpdate({ guildId }, { inviteLogChannel: channelId }, { upsert: true });
+                return await interaction.editReply({ content: `✅ **Saved!** Invite logs channel updated to <#${channelId}>.` });
             }
 
             if (interaction.customId === 'modal_ticket') {
@@ -557,14 +626,14 @@ client.on('interactionCreate', async (interaction) => {
                 const options = cats.map(cat => ({ label: cat, value: cat }));
                 const menu = new StringSelectMenuBuilder().setCustomId('ticket_select').addOptions(options);
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
-                return interaction.editReply({ content: '✅ Deployed Support Tickets Panel Successfully!' });
+                return await interaction.editReply({ content: '✅ Deployed Support Tickets Panel Successfully!' });
             }
 
             if (interaction.customId === 'modal_stats_setup') {
                 const tId = interaction.fields.getTextInputValue('stats_total_input').trim();
                 const oId = interaction.fields.getTextInputValue('stats_online_input').trim();
                 await GuildConfig.findOneAndUpdate({ guildId }, { totalMembersChan: tId, onlinePlayersChan: oId }, { upsert: true });
-                return interaction.editReply({ content: '✅ Stats Configured Successfully!' });
+                return await interaction.editReply({ content: '✅ **Saved Stats Configuration Successfully!**' });
             }
 
             if (interaction.customId === 'youtube_modal_submit') {
@@ -572,7 +641,7 @@ client.on('interactionCreate', async (interaction) => {
                 const lId = interaction.fields.getTextInputValue('yt_live_chan_input').trim();
                 const uId = interaction.fields.getTextInputValue('yt_upload_chan_input').trim();
                 await GuildConfig.findOneAndUpdate({ guildId }, { ytChannelId: ytId, ytLiveChannel: lId, ytUploadChannel: uId }, { upsert: true });
-                return interaction.editReply({ content: '✅ YouTube System Connected!' });
+                return await interaction.editReply({ content: '✅ **Connected YouTube System Successfully!**' });
             }
 
             if (interaction.customId === 'modal_welcome') {
@@ -580,9 +649,10 @@ client.on('interactionCreate', async (interaction) => {
                     welcomeTitle: interaction.fields.getTextInputValue('w_title'),
                     welcomeMessage: interaction.fields.getTextInputValue('w_msg'),
                     welcomeChannel: interaction.fields.getTextInputValue('w_chan'),
-                    welcomeThumbnail: interaction.fields.getTextInputValue('w_thumb') || ''
+                    welcomeThumbnail: interaction.fields.getTextInputValue('w_thumb') || '',
+                    welcomeDm: interaction.fields.getTextInputValue('w_dm') || ''
                 }, { upsert: true });
-                return interaction.editReply({ content: '✅ Saved Welcome Settings!' });
+                return await interaction.editReply({ content: '✅ Saved Welcome Settings!' });
             }
 
             if (interaction.customId === 'modal_store_cfg') {
@@ -590,8 +660,8 @@ client.on('interactionCreate', async (interaction) => {
                 const adminRoleId = interaction.fields.getTextInputValue('cfg_role');
                 const logsChannelId = interaction.fields.getTextInputValue('cfg_logs');
                 const bulkInput = interaction.fields.getTextInputValue('cfg_items');
-                const categories = []; const items = [];
-
+                const categories = [];
+                const items = [];
                 if (bulkInput) {
                     const categoryBlocks = bulkInput.split('||');
                     categoryBlocks.forEach(block => {
@@ -605,12 +675,14 @@ client.on('interactionCreate', async (interaction) => {
                             if (itemParts.length < 2) return;
                             const iName = itemParts[0].trim();
                             const iPrice = parseInt(itemParts[1].replace(/[^0-9]/g, ''), 10);
-                            if (iName && !isNaN(iPrice)) items.push({ category: catName, name: iName, price: iPrice, command: '' });
+                            if (iName && !isNaN(iPrice)) {
+                                items.push({ category: catName, name: iName, price: iPrice, command: '' });
+                            }
                         });
                     });
                 }
                 await GuildStore.findOneAndUpdate({ guildId }, { serverName, adminRoleId, logsChannelId, categories, items }, { upsert: true });
-                return interaction.editReply({ content: '✅ Store Stock & Categories updated.' });
+                return await interaction.editReply({ content: '✅ **Button 1 Saved!** Stock & Categories updated.' });
             }
 
             if (interaction.customId === 'modal_store_visual') {
@@ -618,56 +690,62 @@ client.on('interactionCreate', async (interaction) => {
                 const panelDescription = interaction.fields.getTextInputValue('pnl_desc');
                 const panelBanner = interaction.fields.getTextInputValue('pnl_banner');
                 const targetChanId = interaction.fields.getTextInputValue('pnl_chan');
-
                 const store = await GuildStore.findOneAndUpdate({ guildId }, { panelTitle, panelDescription, panelBanner }, { upsert: true, new: true });
                 const targetChannel = interaction.guild.channels.cache.get(targetChanId);
-                if (!targetChannel) return interaction.editReply({ content: '❌ Invalid Destination Channel ID!' });
-
+                if (!targetChannel) return await interaction.editReply({ content: '❌ Invalid Destination Channel ID!' });
                 const embed = new EmbedBuilder().setTitle(panelTitle).setDescription(panelDescription).setColor('#5865F2').setTimestamp();
                 if (panelBanner && panelBanner.startsWith('http')) embed.setImage(panelBanner);
-
+                if (!store.categories || store.categories.length === 0) {
+                    return await interaction.editReply({ content: '❌ Please setup Button 1 (Stock) first!' });
+                }
                 const options = store.categories.map(cat => ({ label: cat, value: `store_cat_${cat}` }));
                 const row = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('store_category_select').setPlaceholder('🗂️ Choose a Category...').addOptions(options));
                 await targetChannel.send({ embeds: [embed], components: [row] });
-                return interaction.editReply({ content: `🚀 Store deployed in <#${targetChanId}>.` });
+                return await interaction.editReply({ content: `🚀 Store deployed in <#${targetChanId}>.` });
             }
 
             if (interaction.customId === 'modal_store_execution') {
                 const consoleChannelId = interaction.fields.getTextInputValue('exe_console');
                 const mappingsRaw = interaction.fields.getTextInputValue('exe_cmds').split('||').map(m => m.trim());
                 const store = await GuildStore.findOne({ guildId });
-                if (!store) return interaction.editReply({ content: '❌ Setup Stock first!' });
-
+                if (!store) return await interaction.editReply({ content: '❌ Setup Button 1 first!' });
                 store.consoleChannelId = consoleChannelId;
                 mappingsRaw.forEach(mapping => {
                     const parts = mapping.split(':');
-                    const matchedItem = store.items.find(i => i.name.toLowerCase() === parts[0]?.trim().toLowerCase());
-                    if (matchedItem) matchedItem.command = parts[1]?.trim();
+                    const iName = parts[0]?.trim();
+                    const iCmd = parts[1]?.trim();
+                    const matchedItem = store.items.find(i => i.name.toLowerCase() === iName.toLowerCase());
+                    if (matchedItem) matchedItem.command = iCmd;
                 });
                 await store.save();
-                return interaction.editReply({ content: '⚙️ Console commands mapped successfully.' });
+                return await interaction.editReply({ content: '⚙️ **Button 3 Complete!** Commands mapped.' });
             }
 
             if (interaction.customId === 'modal_store_dms') {
-                await GuildStore.findOneAndUpdate({ guildId }, {
-                    dmApproved: interaction.fields.getTextInputValue('dm_app'),
-                    dmRejected: interaction.fields.getTextInputValue('dm_rej'),
-                    dmPendingReminder: interaction.fields.getTextInputValue('dm_pend')
-                }, { upsert: true });
-                return interaction.editReply({ content: '✅ DM Templates saved.' });
+                const dmApproved = interaction.fields.getTextInputValue('dm_app');
+                const dmRejected = interaction.fields.getTextInputValue('dm_rej');
+                const dmPendingReminder = interaction.fields.getTextInputValue('dm_pend');
+                await GuildStore.findOneAndUpdate({ guildId }, { dmApproved, dmRejected, dmPendingReminder }, { upsert: true });
+                return await interaction.editReply({ content: '✅ Custom DM Alert templates saved.' });
             }
 
             if (interaction.customId === 'modal_auto_response') {
                 const bulkInput = interaction.fields.getTextInputValue('auto_input_box');
                 const autoResponses = [];
-                if (bulkInput) {
-                    bulkInput.split('||').forEach(block => {
-                        const colon = block.indexOf(':');
-                        if (colon !== -1) autoResponses.push({ trigger: block.substring(0, colon).trim().toLowerCase(), replyText: block.substring(colon + 1).trim() });
+                if (bulkInput && bulkInput.trim().length > 0) {
+                    const responseBlocks = bulkInput.split('||');
+                    responseBlocks.forEach(block => {
+                        const firstColonIndex = block.indexOf(':');
+                        if (firstColonIndex === -1) return;
+                        const triggerWord = block.substring(0, firstColonIndex).trim().toLowerCase();
+                        const replyString = block.substring(firstColonIndex + 1).trim();
+                        if (triggerWord && replyString) {
+                            autoResponses.push({ trigger: triggerWord, replyText: replyString });
+                        }
                     });
                 }
                 await GuildConfig.findOneAndUpdate({ guildId }, { autoResponses }, { upsert: true });
-                return interaction.editReply({ content: '✅ Auto-responses updated!' });
+                return await interaction.editReply({ content: '✅ Custom auto-responses setup live!' });
             }
 
             if (interaction.customId.startsWith('modal_player_checkout_')) {
@@ -675,8 +753,7 @@ client.on('interactionCreate', async (interaction) => {
                 const buyerIGN = interaction.fields.getTextInputValue('player_ign');
                 const store = await GuildStore.findOne({ guildId });
                 const item = store?.items.find(i => i._id.toString() === itemUniqueId);
-                if (!item) return interaction.editReply({ content: '❌ Item expired.' });
-
+                if (!item) return await interaction.editReply({ content: '❌ Item expired or deleted.' });
                 const ticketRoom = await interaction.guild.channels.create({
                     name: `order-${interaction.user.username}`,
                     permissionOverwrites: [
@@ -685,22 +762,20 @@ client.on('interactionCreate', async (interaction) => {
                         ...(store.adminRoleId ? [{ id: store.adminRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }] : [])
                     ]
                 });
-
                 await OrderTicket.create({ guildId, channelId: ticketRoom.id, buyerId: interaction.user.id, buyerIGN, itemName: item.name, itemPrice: item.price, itemCategory: item.category });
                 const embed = new EmbedBuilder().setTitle('📥 NEW INBOUND ORDER').setColor('#FFCC00').addFields(
-                    { name: '👤 Buyer', value: `${interaction.user}`, inline: true },
+                    { name: '👤 Buyer Account', value: `${interaction.user}`, inline: true },
                     { name: '🎮 IGN', value: `\`${buyerIGN}\``, inline: true },
-                    { name: '📦 Package', value: `**${item.name}**`, inline: false },
+                    { name: '📦 Selected Package', value: `**${item.name}** (${item.category})`, inline: false },
                     { name: '💰 Price', value: `\`${item.price} INR\``, inline: true }
                 ).setTimestamp();
-
                 const controlRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('btn_order_approve').setLabel('Approve').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('btn_order_reject').setLabel('Reject').setStyle(ButtonStyle.Danger),
-                    new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete').setStyle(ButtonStyle.Secondary)
+                    new ButtonBuilder().setCustomId('btn_order_approve').setLabel('Approve Order').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('btn_order_reject').setLabel('Reject Order').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setStyle(ButtonStyle.Secondary)
                 );
                 await ticketRoom.send({ content: `${interaction.user} | <@&${store.adminRoleId}>`, embeds: [embed], components: [controlRow] });
-                return interaction.editReply({ content: `🎯 Order room opened: ${ticketRoom}` });
+                return await interaction.editReply({ content: `🎯 Order channel opened: ${ticketRoom}` });
             }
         }
 
@@ -710,11 +785,9 @@ client.on('interactionCreate', async (interaction) => {
                 if (!config) return;
                 const selectedCategory = interaction.values[0]; 
                 const name = `ticket-${interaction.user.username.toLowerCase()}`;
-                
                 if (interaction.guild.channels.cache.find(c => c.name === name)) {
-                    return await interaction.reply({ content: '❌ Active ticket already exists.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ You already have an active ticket.', ephemeral: true });
                 }
-                
                 await interaction.deferReply({ ephemeral: true });
                 const ch = await interaction.guild.channels.create({
                     name, parent: config.ticketParent || null,
@@ -724,14 +797,13 @@ client.on('interactionCreate', async (interaction) => {
                         ...(config.ticketRole ? [{ id: config.ticketRole, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }] : [])
                     ]
                 });
-
-                let parsedMessage = (config.ticketMessage || 'Support ticket opened.').replace(/{user}/g, `${interaction.user}`);
-                if (config.ticketRole) parsedMessage += `\n\n🔔 <@&${config.ticketRole}>`;
-
-                const embed = new EmbedBuilder().setTitle('🎫 Ticket Terminal').setDescription(parsedMessage).addFields({ name: 'Category', value: `\`${selectedCategory}\`` }).setColor('#00ffcc');
+                let parsedMessage = config.ticketMessage || 'Thank you for contacting support.';
+                parsedMessage = parsedMessage.replace(/{user}/g, `${interaction.user}`).replace(/{{User.Mention}}/g, `${interaction.user}`).replace(/{{user.mention}}/g, `${interaction.user}`);
+                if (config.ticketRole) parsedMessage = `${parsedMessage}\n\n🔔 **Staff Notification:** <@&${config.ticketRole}>`;
+                const embed = new EmbedBuilder().setTitle('🎫 Ticket Support Terminal').setDescription(parsedMessage).addFields({ name: '🗂️ Category', value: `\`${selectedCategory}\``, inline: false }).setColor('#00ffcc');
                 const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger));
                 await ch.send({ embeds: [embed], components: [row] });
-                return interaction.editReply({ content: `Generated: ${ch}` });
+                return await interaction.editReply({ content: `Generated: ${ch}` });
             }
 
             const store = await GuildStore.findOne({ guildId });
@@ -740,20 +812,22 @@ client.on('interactionCreate', async (interaction) => {
             if (interaction.customId === 'store_category_select') {
                 const chosenCat = interaction.values[0].replace('store_cat_', '');
                 const filteredItems = store.items.filter(i => i.category === chosenCat);
-                if (filteredItems.length === 0) return await interaction.reply({ content: '❌ No items.', ephemeral: true });
-
+                if (filteredItems.length === 0) return await interaction.reply({ content: '❌ No items in this category.', ephemeral: true });
                 const options = filteredItems.map(i => ({ label: `${i.name} - ${i.price} INR`, value: `store_itm_${i._id.toString()}` }));
-                const row = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('store_item_select').setPlaceholder('📦 Choose item...').addOptions(options));
-                return interaction.reply({ content: `📁 **${chosenCat}**`, components: [row], ephemeral: true });
+                const row = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('store_item_select').setPlaceholder('📦 Choose item to buy...').addOptions(options));
+                return await interaction.reply({ content: `📁 Category: **${chosenCat}**`, components: [row], ephemeral: true });
             }
 
             if (interaction.customId === 'store_item_select') {
-                const targetItem = store.items.find(i => i._id.toString() === interaction.values[0].replace('store_itm_', ''));
-                const buyRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_trigger_checkout_${targetItem._id}`).setLabel(`Order: ${targetItem.name} (${targetItem.price} INR)`).setStyle(ButtonStyle.Primary));
-                return interaction.reply({ content: `🛒 Buy **${targetItem.name}**? Click below:`, components: [buyRow], ephemeral: true });
+                const itemDbId = interaction.values[0].replace('store_itm_', '');
+                const targetItem = store.items.find(i => i._id.toString() === itemDbId);
+                const buyRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_trigger_checkout_${itemDbId}`).setLabel(`Order: ${targetItem.name} (${targetItem.price} INR)`).setStyle(ButtonStyle.Primary));
+                return await interaction.reply({ content: `🛒 Buy **${targetItem.name}**? Click checkout below:`, components: [buyRow], ephemeral: true });
             }
         }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+        console.error("Interaction Exception Handled:", err);
+    }
 });
 
 setInterval(async () => {
@@ -767,6 +841,22 @@ setInterval(async () => {
             if (config.onlinePlayersChan) {
                 const chan = g.channels.cache.get(config.onlinePlayersChan);
                 if (chan) await chan.setName(`🟢 Online Players: ${on}`).catch(() => null);
+            }
+        }
+
+        const twelveHoursAgo = new Date(Date.now() - (12 * 60 * 60 * 1000));
+        const pendingTickets = await OrderTicket.find({ lastReminderSent: { $lte: twelveHoursAgo } });
+        for (const ticket of pendingTickets) {
+            const store = await GuildStore.findOne({ guildId: ticket.guildId });
+            if (!store) continue;
+            const buyer = await client.users.fetch(ticket.buyerId).catch(() => null);
+            if (buyer) {
+                const msg = (store.dmPendingReminder || "⏰ **Pending Order Reminder [{{server}}]!** Your order for **{{item}}** is still pending.")
+                    .replace(/{{server}}/g, store.serverName)
+                    .replace(/{{item}}/g, ticket.itemName);
+                await buyer.send({ content: msg }).catch(() => null);
+                ticket.lastReminderSent = new Date();
+                await ticket.save();
             }
         }
 
@@ -785,10 +875,13 @@ setInterval(async () => {
             const target = isLive ? config.ytLiveChannel : config.ytUploadChannel;
             if (target) {
                 const c = g.channels.cache.get(target);
-                if (c) await c.send({ content: isLive ? `🔴 **LIVE NOW!** ${item.link}` : `🎬 **NEW UPLOAD!** ${item.link}` }).catch(() => null);
+                if (c) {
+                    const msg = isLive ? `🔴 **LIVE NOW!** \n📢 **${item.title}**\n👉 ${item.link} @everyone` : `🎬 **NEW UPLOAD!** \n📢 **${item.title}**\n👉 ${item.link} @everyone`;
+                    await c.send({ content: msg }).catch(() => null);
+                }
             }
         }
-    } catch (e) {}
+    } catch (e) { console.error("Background Loop Exception:", e); }
 }, 300000);
 
 client.login(process.env.DISCORD_TOKEN);
