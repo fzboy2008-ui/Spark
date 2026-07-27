@@ -3,31 +3,28 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("disc
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("say")
-        .setDescription("Send message as embed")
-        // Default permission set to Administrator so only admins can see/use this slash command
+        .setDescription("Send an administrative message formatted inside an embed")
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addChannelOption(opt =>
             opt.setName("channel")
                 .setRequired(true)
-                .setDescription("Select the channel to send embed")
+                .setDescription("Select the target text channel")
         )
         .addStringOption(opt =>
             opt.setName("message")
                 .setRequired(true)
-                .setDescription("Type your message (Use \\n for new lines)")
+                .setDescription("Type your message content (use \\n for new lines)")
         ),
 
     async execute(interaction) {
         const channel = interaction.options.getChannel("channel");
         const message = interaction.options.getString("message");
 
-        // Processing formatting strings for visual breakout text configurations
         const formattedMessage = message.replace(/\\n/g, '\n');
 
-        // Target channel validation deployment check
         if (!channel.isTextBased()) {
             return interaction.reply({
-                content: "❌ Target channel must be a text channel.",
+                content: "❌ The selected target must be a valid text channel.",
                 ephemeral: true
             });
         }
@@ -41,7 +38,7 @@ module.exports = {
         await channel.send({ embeds: [embed] });
 
         return interaction.reply({
-            content: "✅ Sent successfully as embed!",
+            content: "✅ Message sent successfully as an embed!",
             ephemeral: true
         });
     }
