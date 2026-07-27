@@ -13,19 +13,19 @@ module.exports = {
     async execute(interaction) {
         if (interaction.options.getSubcommand() === "panel") {
             const embed = new EmbedBuilder()
-                .setTitle("🛒 Store Control Dashboard")
-                .setDescription("Welcome to the Store Engine Panel. Select a setup module below to configure your store settings dynamically.")
+                .setTitle("🛒 STORE MANAGEMENT DASHBOARD")
+                .setDescription("Welcome to the Store Engine Panel. Select a setup module below to configure your store inventory, visual layouts, console commands, and custom DM alerts dynamically.")
                 .setColor("#5865F2")
                 .setTimestamp();
 
             const row1 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId("setup_store_cfg").setLabel("1. Basic Setup & Stock").setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId("setup_store_visual").setLabel("2. Deploy Visual Panel").setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId("setup_store_execution").setLabel("3. Console & Commands").setStyle(ButtonStyle.Secondary)
+                new ButtonBuilder().setCustomId("setup_store_cfg").setLabel("1. Stock Setup").setEmoji("<a:store_cart:1531251190275379282>").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId("setup_store_visual").setLabel("2. Visual Panel").setEmoji("<a:gift:1531251179235840051>").setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId("setup_store_execution").setLabel("3. Console Config").setEmoji("<a:update:1531251219975114752>").setStyle(ButtonStyle.Secondary)
             );
 
             const row2 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId("setup_store_dms").setLabel("4. DM Alerts Settings").setStyle(ButtonStyle.Danger)
+                new ButtonBuilder().setCustomId("setup_store_dms").setLabel("4. DM Alerts Settings").setEmoji("<a:alert:1531250980199338064>").setStyle(ButtonStyle.Danger)
             );
 
             return await interaction.reply({
