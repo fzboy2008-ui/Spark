@@ -1,58 +1,57 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const InviteData = require('../models/InviteData');
-const GuildConfig = require('../models/GuildConfig');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('invite')
-        .setDescription('Clean invite tracker and leaderboard system')
-        .addSubcommand(s => s.setName('check').setDescription('Check invites for a member').addUserOption(o => o.setName('user').setDescription('Target user')))
-        .addSubcommand(s => s.setName('leaderboard').setDescription('View top 10 invite leaderboard')),
+        .setDescription('Invite tracking and management system')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addSubcommand(s => s.setName('panel').setDescription('Open the invite control panel dashboard'))
+        .addSubcommand(s => 
+            s.setName('check')
+             .setDescription('Check invite statistics for a specific member')
+             .addUserOption(o => o.setName('user').setDescription('Target member').setRequired(false))
+        ),
 
     async execute(interaction) {
         const sub = interaction.options.getSubcommand();
         const guildId = interaction.guild.id;
 
-        if (sub === 'check') {
-            await interaction.deferReply();
-            const target = interaction.options.getUser('user') || interaction.user;
-            const data = await InviteData.findOne({ guildId, userId: target.id }) || { regular: 0, leaves: 0, fake: 0 };
-            const total = data.regular - data.leaves - data.fake;
-
+        if (sub === 'panel') {
             const embed = new EmbedBuilder()
-                .setTitle(`📊 Invite Profile: ${target.username}`)
-                .setDescription(`**Total Valid Invites:** \`${total}\`\n• Regular Joins: \`${data.regular}\`\n• Leaves: \`${data.leaves}\`\n• Fake/Alt: \`${data.fake}\``)
-                .setColor('#57f287')
+                .setTitle('📩 INVITE TRACKER DASHBOARD')
+                .setDescription('Manage your server invite logs channel or inspect the top lifetime invite leaderboard using the options below.')
+                .setColor('#5865F2')
                 .setTimestamp();
 
-            return interaction.editReply({ embeds: [embed] });
+            const row1 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_inv_guild_lb').setLabel('Leaderboard').setEmoji('<a:trophy:1531251182713045023>').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('btn_inv_logs_cfg').setLabel('Setup Logs').setEmoji('<a:update:1531251219975114752>').setStyle(ButtonStyle.Secondary)
+            );
+
+            return await interaction.reply({ embeds: [embed], components: [row1], ephemeral: true });
         }
 
-        if (sub === 'leaderboard') {
+        if (sub === 'check') {
             await interaction.deferReply();
-            const allData = await InviteData.find({ guildId });
-            const sorted = allData
-                .map(d => ({ userId: d.userId, total: d.regular - d.leaves - d.fake }))
-                .sort((a, b) => b.total - a.total)
-                .slice(0, 10);
 
-            if (sorted.length === 0) {
-                return interaction.editReply({ content: '❌ No invite data recorded yet.' });
-            }
+            const target = interaction.options.getUser('user') || interaction.user;
+            const data = await InviteData.findOne({ guildId, userId: target.id }) || { permRegular: 0, permLeaves: 0, permFake: 0 };
+            
+            const reg = data.permRegular;
+            const lvs = data.permLeaves;
+            const fk = data.permFake;
+            const total = reg - lvs - fk;
 
-            let desc = '';
-            const medals = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅', '🏅', '🏅', '🏅', '🏅'];
-            for (let i = 0; i < sorted.length; i++) {
-                desc += `${medals[i]} **#${i + 1}** <@${sorted[i].userId}> • **${sorted[i].total}** Invites\n`;
-            }
+            const card = `👤 User Profile : ${target.tag}\n📊 Total Invites : ${total}\n--------------------------------\n🟢 Regular     : ${reg}\n🔴 Leaves      : ${lvs}\n⚠️ Fake        : ${fk}`;
 
             const embed = new EmbedBuilder()
-                .setTitle('🏆 Top 10 Server Invite Leaderboard')
-                .setDescription(desc)
-                .setColor('#fee75c')
+                .setTitle('⚡ MEMBER INVITE STATISTICS')
+                .setDescription(card)
+                .setColor('#FFCC00')
                 .setTimestamp();
 
-            return interaction.editReply({ embeds: [embed] });
+            return await interaction.editReply({ embeds: [embed] });
         }
     }
 };
