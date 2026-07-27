@@ -5,12 +5,12 @@ const activeGiveaways = new Map();
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("giveaway")
-        .setDescription("Start a giveaway")
+        .setDescription("Start an interactive community giveaway")
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(o => o.setName("channel").setDescription("Giveaway channel").setRequired(true))
-        .addStringOption(o => o.setName("reward").setDescription("Prize / Reward").setRequired(true))
+        .addChannelOption(o => o.setName("channel").setDescription("Target channel for the giveaway").setRequired(true))
+        .addStringOption(o => o.setName("reward").setDescription("Prize or reward description").setRequired(true))
         .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setRequired(true))
-        .addStringOption(o => o.setName("time").setDescription("Time in seconds (e.g. 60) or format (1m / 1h)").setRequired(true)),
+        .addStringOption(o => o.setName("time").setDescription("Duration (e.g., 30s, 10m, 2h, 1d)").setRequired(true)),
 
     async execute(interaction) {
         try {
@@ -24,20 +24,20 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setColor("Gold")
-                .setTitle("<a:Gift:1525578880809963640> 𝐆𝐈𝐕𝐄𝐀𝐖𝐀𝐘 𝐒𝐓𝐀𝐑𝐓𝐄𝐃 <a:Gift:1525578880809963640>")
+                .setTitle("<a:gift:1531251179235840051> COMMUNITY GIVEAWAY STARTED <a:gift:1531251179235840051>")
                 .setDescription(`
-⟢ Host         : ${interaction.user}
+⟢ Hosted By    : ${interaction.user}
 ⟢ Reward       : ${reward}
 ⟢ Winners      : ${winners}
 ⟢ Ends         : <t:${Math.floor(endTime / 1000)}:R>
 
 ────────────────────
 
-➥ React with <a:Party:1525578866100277469> to participate.
+➥ React with <a:party_popper:1531251098738888734> to enter the giveaway!
 `);
 
             const msg = await channel.send({ embeds: [embed] });
-            await msg.react("<a:Party:1525578866100277469>");
+            await msg.react("1531251098738888734");
 
             activeGiveaways.set(msg.id, {
                 channelId: channel.id,
@@ -50,10 +50,10 @@ module.exports = {
                 endGiveaway(msg.id, interaction.client);
             }, ms);
 
-            return interaction.reply({ content: "✅ Giveaway started successfully!", flags: [64] });
+            return interaction.reply({ content: "✅ Giveaway has been successfully started!", ephemeral: true });
         } catch (err) {
             console.error(err);
-            return interaction.reply({ content: "❌ Something went wrong in giveaway", flags: [64] });
+            return interaction.reply({ content: "❌ An error occurred while starting the giveaway.", ephemeral: true });
         }
     }
 };
@@ -68,8 +68,7 @@ async function endGiveaway(messageId, client) {
     const message = await channel.messages.fetch(messageId).catch(() => null);
     if (!message) return;
 
-    // Filter reaction matching the precise new emoji ID
-    const reaction = message.reactions.cache.find(r => r.emoji.id === "1525578866100277469");
+    const reaction = message.reactions.cache.get("1531251098738888734");
     if (!reaction) {
         activeGiveaways.delete(messageId);
         return;
@@ -88,19 +87,19 @@ async function endGiveaway(messageId, client) {
 
     const embed = new EmbedBuilder()
         .setColor("DarkRed")
-        .setTitle("<a:Gift:1525578880809963640> 𝐆𝐈𝐕𝐄𝐀𝐖𝐀𝐘 𝐄𝐍𝐃𝐄𝐃 <a:Gift:1525578880809963640>")
+        .setTitle("<a:gift:1531251179235840051> GIVEAWAY CONCLUDED <a:gift:1531251179235840051>")
         .setDescription(`
 ⟢ Reward       : ${giveaway.reward}
-⟢ Winners      : ${giveaway.winners}
+⟢ Total Winners: ${giveaway.winners}
 
 ────────────────────
 
-<a:Winner:1525578870701428856> **WINNERS**
-${winnersList.length ? winnersList.map(u => `▸ ${u}`).join("\n") : "▸ No valid entries"}
+<a:trophy:1531251182713045023> **WINNERS**
+${winnersList.length ? winnersList.map(u => `▸ ${u}`).join("\n") : "▸ No valid entries recorded"}
 
 ────────────────────
 
-<a:Celebration:1525578876758134794> Congratulations!
+<a:celebration:1531251175721009242> Congratulations to all the winners!
 `);
 
     await channel.send({ embeds: [embed] });
