@@ -455,7 +455,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
 
                 const firstQ = config.appQuestions[0] || 'What is your full name and age?';
-                await appChannel.send({ content: `${interaction.user}\n\n📝 **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
+                await appChannel.send({ content: `📝 **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
                 return await interaction.reply({ content: `✅ Application channel successfully created: ${appChannel}`, ephemeral: true });
             }
 
