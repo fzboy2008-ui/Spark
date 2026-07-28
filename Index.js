@@ -161,41 +161,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // 3. Staff Application Start Handler
-            if (interaction.customId === 'btn_start_staff_apply') {
-                const config = await GuildConfig.findOne({ guildId });
-                if (!config || !config.appStaffChannelId) {
-                    return await interaction.reply({ content: '❌ The staff application system has not been fully configured by administrators yet.', ephemeral: true });
-                }
-
-                const existingSession = await StaffAppSession.findOne({ userId: interaction.user.id, guildId });
-                if (existingSession) {
-                    return await interaction.reply({ content: '⚠️ You already have an active application session running in <#' + existingSession.channelId + '>', ephemeral: true });
-                }
-
-                const appChannel = await interaction.guild.channels.create({
-                    name: `app-${interaction.user.username}`,
-                    parent: config.ticketParent || null,
-                    permissionOverwrites: [
-                        { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
-                    ]
-                });
-
-                await StaffAppSession.create({
-                    userId: interaction.user.id,
-                    guildId,
-                    channelId: appChannel.id,
-                    currentQuestionIndex: 0,
-                    answers: []
-                });
-
-                const firstQ = config.appQuestions[0] || 'What is your full name and age?';
-                await appChannel.send({ content: `📝 **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
-                return await interaction.reply({ content: `✅ Application channel successfully created: ${appChannel}`, ephemeral: true });
-            }
-    
-    // 4. Server Auto Responses Handler
+    // 3. Server Auto Responses Handler
     const userMessage = message.content.toLowerCase();
 
     try {
