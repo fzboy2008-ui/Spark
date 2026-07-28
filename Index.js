@@ -914,43 +914,42 @@ client.on('interactionCreate', async (interaction) => {
 
         // 4. SELECT MENUS HANDLER
         if (interaction.isStringSelectMenu()) {
-            if (interaction.customId === 'ticket_select') {
-                const config = await GuildConfig.findOne({ guildId });
-                if (!config) return;
+                        if (interaction.customId === 'modal_ticket') {
+                const logsData = interaction.fields.getTextInputValue('t_logs').split(',');
+                const cats = interaction.fields.getTextInputValue('t_cats').split(',').map(c => c.trim());
+                const descData = interaction.fields.getTextInputValue('t_desc').split('||');
+                const panelDescription = descData[0]?.trim();
+                const panelBanner = descData[1]?.trim() || '';
 
-                const selectedCategory = interaction.values[0]; 
-                const name = `ticket-${interaction.user.username.toLowerCase()}`;
+                await GuildConfig.findOneAndUpdate({ guildId }, {
+                    ticketDescription: panelDescription,
+                    ticketBanner: panelBanner,
+                    ticketParent: interaction.fields.getTextInputValue('t_parent'),
+                    ticketLogs: logsData[0]?.trim(),
+                    ticketRole: logsData[1]?.trim(),
+                    ticketMessage: interaction.fields.getTextInputValue('t_msg').trim()
+                }, { upsert: true, new: true });
+
+                const embed = new EmbedBuilder().setTitle('🎫 Create a Ticket').setDescription(panelDescription).setColor('#5865F2');
                 
-                if (interaction.guild.channels.cache.find(c => c.name === name || c.name.startsWith(`claimed-${interaction.user.username.toLowerCase()}`))) {
-                    return await interaction.reply({ content: '❌ You already have an active support ticket open.', ephemeral: true });
+                if (panelBanner && panelBanner.startsWith('http')) {
+                    embed.setImage(panelBanner);
                 }
-                
-                await interaction.deferReply({ ephemeral: true });
-                const ch = await interaction.guild.channels.create({
-                    name, parent: config.ticketParent || null,
-                    permissionOverwrites: [
-                        { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-                        ...(config.ticketRole ? [{ id: config.ticketRole, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }] : [])
-                    ]
-                });
 
-                let parsedMessage = config.ticketMessage || 'Thank you for contacting support. A staff member will assist you shortly.';
-                parsedMessage = parsedMessage.replace(/{user}/g, `${interaction.user}`).replace(/{{User.Mention}}/g, `${interaction.user}`).replace(/{{user.mention}}/g, `${interaction.user}`);
+                const options = cats.map(cat => ({ 
+                    label: cat, 
+                    value: cat.toLowerCase().replace(/\s+/g, '_') 
+                }));
                 
-                const staffPing = config.ticketRole ? `<@&${config.ticketRole}>` : '';
-                const fullPingContent = `${interaction.user} ${staffPing}`;
+                const menu = new StringSelectMenuBuilder()
+                    .setCustomId('ticket_select')
+                    .setPlaceholder('🎫 Select a ticket category...')
+                    .addOptions(options);
 
-                const embed = new EmbedBuilder().setTitle('🎫 Support Ticket Terminal').setDescription(parsedMessage).addFields({ name: '🗂️ Category', value: `\`${selectedCategory}\``, inline: false }).setColor('#00ffcc');
-                
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger)
-                );
-
-                await ch.send({ content: fullPingContent, embeds: [embed], components: [row] });
-                return await interaction.editReply({ content: `Ticket generated successfully: ${ch}` });
+                await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
+                return await interaction.editReply({ content: '✅ Support Tickets Panel deployed successfully!' });
             }
+
 
             const store = await GuildStore.findOne({ guildId });
             if (!store) return;
