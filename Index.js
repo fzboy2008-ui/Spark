@@ -921,7 +921,7 @@ client.on('interactionCreate', async (interaction) => {
                 const selectedCategory = interaction.values[0]; 
                 const name = `ticket-${interaction.user.username.toLowerCase()}`;
                 
-                if (interaction.guild.channels.cache.find(c => c.name === name || c.name.startsWith(`✅-claimed-${interaction.user.username.toLowerCase()}`))) {
+                if (interaction.guild.channels.cache.find(c => c.name === name || c.name.startsWith(`claimed-${interaction.user.username.toLowerCase()}`))) {
                     return await interaction.reply({ content: '❌ You already have an active support ticket open.', ephemeral: true });
                 }
                 
@@ -939,12 +939,13 @@ client.on('interactionCreate', async (interaction) => {
                 parsedMessage = parsedMessage.replace(/{user}/g, `${interaction.user}`).replace(/{{User.Mention}}/g, `${interaction.user}`).replace(/{{user.mention}}/g, `${interaction.user}`);
                 
                 const staffPing = config.ticketRole ? `<@&${config.ticketRole}>` : '';
-                const fullPingContent = `${interaction.user} ${staffPing}`; // Pinging outside embed
+                const fullPingContent = `${interaction.user} ${staffPing}`;
 
                 const embed = new EmbedBuilder().setTitle('🎫 Support Ticket Terminal').setDescription(parsedMessage).addFields({ name: '🗂️ Category', value: `\`${selectedCategory}\``, inline: false }).setColor('#00ffcc');
+                
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setEmoji('<a:confirm:153125116167643206>').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger)
                 );
 
                 await ch.send({ content: fullPingContent, embeds: [embed], components: [row] });
