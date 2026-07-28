@@ -123,7 +123,7 @@ client.on('messageCreate', async (message) => {
         if (activeSession.currentQuestionIndex < questions.length) {
             const nextQ = questions[activeSession.currentQuestionIndex];
             // Ping hatakar simple clean question format kar diya hai
-            await message.channel.send({ content: `<a:report:1531250976617402418> **Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
+            await message.channel.send({ content: `📝 **Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
@@ -564,7 +564,7 @@ client.on('interactionCreate', async (interaction) => {
                     return await interaction.reply({ content: '❌ This action is restricted to support staff members.', ephemeral: true });
                 }
 
-                if (interaction.channel.name.startsWith('✅-claimed-')) {
+                if (interaction.channel.name.startsWith('claimed-') || interaction.channel.name.startsWith('✅-claimed-')) {
                     return await interaction.reply({ content: '⚠️ This support ticket has already been claimed!', ephemeral: true });
                 }
 
@@ -573,13 +573,23 @@ client.on('interactionCreate', async (interaction) => {
 
                 await interaction.reply({ content: `🔒 Ticket successfully claimed by ${interaction.user}` });
 
+                // Updated with safe object-style emojis matching your create block
                 const newRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claimed').setEmoji('<a:confirm:153125116167643206>').setStyle(ButtonStyle.Success).setDisabled(true),
-                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder()
+                        .setCustomId('claim_ticket')
+                        .setLabel('Claimed')
+                        .setEmoji({ name: 'confirm', id: '1531251161657643206', animated: true })
+                        .setStyle(ButtonStyle.Success)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId('close_ticket')
+                        .setLabel('Close')
+                        .setEmoji({ name: 'alert', id: '1531250980199338064', animated: true })
+                        .setStyle(ButtonStyle.Danger)
                 );
                 return await interaction.message.edit({ components: [newRow] });
             }
-
+            
             if (interaction.customId === 'close_ticket') {
                 await interaction.reply('🔒 Closing ticket channel in 5 seconds...');
                 const fetched = await interaction.channel.messages.fetch({ limit: 100 });
@@ -952,7 +962,18 @@ client.on('interactionCreate', async (interaction) => {
                 const fullPingContent = `${interaction.user} ${staffPing}`;
 
                 const embed = new EmbedBuilder().setTitle('🎫 Ticket Support Terminal').setDescription(parsedMessage).addFields({ name: '🗂️ Category', value: `\`${selectedCategory}\``, inline: false }).setColor('#00ffcc');
-                const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger));
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('claim_ticket')
+                        .setLabel('Claim')
+                        .setEmoji({ name: 'confirm', id: '1531251161657643206', animated: true })
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId('close_ticket')
+                        .setLabel('Close')
+                        .setEmoji({ name: 'alert', id: '1531250980199338064', animated: true })
+                        .setStyle(ButtonStyle.Danger)
+                );
 
                 await ch.send({ content: fullPingContent, embeds: [embed], components: [row] });
                 return await interaction.editReply({ content: `Generated: ${ch}` });
