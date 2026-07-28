@@ -115,6 +115,8 @@ client.on('messageCreate', async (message) => {
     if (activeSession && message.channel.id === activeSession.channelId) {
         activeSession.answers.push(message.content);
         activeSession.currentQuestionIndex += 1;
+        
+        const targetChannel = message.channel;
         await message.delete().catch(() => {});
 
         const config = await GuildConfig.findOne({ guildId: message.guild.id });
@@ -122,11 +124,11 @@ client.on('messageCreate', async (message) => {
 
         if (activeSession.currentQuestionIndex < questions.length) {
             const nextQ = questions[activeSession.currentQuestionIndex];
-            await message.channel.send({ content: `**Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
+            await targetChannel.send({ content: `**Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
-            await message.channel.send({ content: `<a:confirm:1531251161657643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
+            await targetChannel.send({ content: `<a:confirm:1531251161657643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
 
             const staffChan = message.guild.channels.cache.get(config.appStaffChannelId);
             if (staffChan) {
@@ -152,7 +154,7 @@ client.on('messageCreate', async (message) => {
 
             setTimeout(async () => {
                 try {
-                    await message.channel.delete();
+                    await targetChannel.delete();
                 } catch (e) {
                     console.error("Failed to delete application channel:", e);
                 }
