@@ -722,7 +722,7 @@ client.on('interactionCreate', async (interaction) => {
                 
                 const menu = new StringSelectMenuBuilder()
                     .setCustomId('ticket_select')
-                    .setPlaceholder('Select a ticket category...')
+                    .setPlaceholder('🎫 Select a ticket category...')
                     .addOptions(options);
 
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
