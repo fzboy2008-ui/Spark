@@ -1,7 +1,7 @@
 {
   "name": "spark-bot",
   "version": "1.0.0",
-  "description": "SparkMC Discord Management System",
+  "description": "Spark Discord Management System",
   "main": "Index.js",
   "scripts": {
     "start": "node Index.js"
