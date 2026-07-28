@@ -111,13 +111,10 @@ client.on('messageCreate', async (message) => {
     if (!message.guild) return;
 
     // 2. Staff Application Session Q&A Handler
-    // 2. Staff Application Session Q&A Handler
     const activeSession = await StaffAppSession.findOne({ userId: message.author.id, guildId: message.guild.id });
     if (activeSession && message.channel.id === activeSession.channelId) {
         activeSession.answers.push(message.content);
         activeSession.currentQuestionIndex += 1;
-        
-        const targetChannel = message.channel;
         await message.delete().catch(() => {});
 
         const config = await GuildConfig.findOne({ guildId: message.guild.id });
@@ -125,43 +122,47 @@ client.on('messageCreate', async (message) => {
 
         if (activeSession.currentQuestionIndex < questions.length) {
             const nextQ = questions[activeSession.currentQuestionIndex];
-            await targetChannel.send({ content: `**Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
+            await message.channel.send({ content: `<a:report:1531250976617402418> ${message.author}, **Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
-            await targetChannel.send({ content: `<a:confirm:1531251161657643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
+            await message.channel.send({ content: `<a:confirm:1531251161657643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
 
-            if (config && config.appStaffChannelId) {
-                const staffChan = message.guild.channels.cache.get(config.appStaffChannelId) || await message.guild.channels.fetch(config.appStaffChannelId).catch(() => null);
-                if (staffChan) {
-                    const embed = new EmbedBuilder()
-                        .setTitle('<a:announcement:1531251217525768324> NEW STAFF APPLICATION SUBMITTED')
-                        .setColor('#00FFCC')
-                        .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-                        .addFields(
-                            { name: '👤 Applicant Details', value: `${message.author} (\`${message.author.id}\`)`, inline: false }
-                        );
-
-                    questions.forEach((q, idx) => {
-                        embed.addFields({ name: `Q${idx + 1}: ${q}`, value: activeSession.answers[idx] || 'No response provided', inline: false });
-                    });
-
-                    const evalRow = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId(`app_approve_${message.author.id}`).setLabel('Approve').setEmoji('<a:confirm:153125116167643206>').setStyle(ButtonStyle.Success),
-                        new ButtonBuilder().setCustomId(`app_reject_${message.author.id}`).setLabel('Reject').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger)
+            const staffChan = message.guild.channels.cache.get(config.appStaffChannelId);
+            if (staffChan) {
+                const embed = new EmbedBuilder()
+                    .setTitle('<a:report:1531250976617402418> NEW STAFF APPLICATION SUBMITTED')
+                    .setColor('#00FFCC')
+                    .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                    .addFields(
+                        { name: '👤 Applicant', value: `${message.author} (\`${message.author.id}\`)`, inline: false }
                     );
 
-                    await staffChan.send({ embeds: [embed], components: [evalRow] }).catch((e) => console.error("Failed to send staff embed:", e));
-                }
+                questions.forEach((q, idx) => {
+                    embed.addFields({ name: `Q${idx + 1}: ${q}`, value: activeSession.answers[idx] || 'No answer', inline: false });
+                });
+
+                const evalRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`app_approve_${message.author.id}`)
+                        .setLabel('Approve')
+                        .setEmoji({ name: 'confirm', id: '153125116167643206', animated: true })
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId(`app_reject_${message.author.id}`)
+                        .setLabel('Reject')
+                        .setEmoji({ name: 'alert', id: '1531250980199338064', animated: true })
+                        .setStyle(ButtonStyle.Danger)
+                );
+
+                await staffChan.send({ embeds: [embed], components: [evalRow] });
             }
 
-            setTimeout(() => {
-                targetChannel.delete().catch(() => {});
-            }, 5000);
+            setTimeout(() => message.channel.delete().catch(() => {}), 5000);
         }
         return;
     }
-
+    
     // 3. Server Auto Responses Handler
     const userMessage = message.content.toLowerCase();
 
