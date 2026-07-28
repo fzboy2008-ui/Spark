@@ -111,6 +111,7 @@ client.on('messageCreate', async (message) => {
     if (!message.guild) return;
 
     // 2. Staff Application Session Q&A Handler
+    // 2. Staff Application Session Q&A Handler
     const activeSession = await StaffAppSession.findOne({ userId: message.author.id, guildId: message.guild.id });
     if (activeSession && message.channel.id === activeSession.channelId) {
         activeSession.answers.push(message.content);
@@ -130,34 +131,32 @@ client.on('messageCreate', async (message) => {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
             await targetChannel.send({ content: `<a:confirm:1531251161657643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
 
-            const staffChan = message.guild.channels.cache.get(config.appStaffChannelId);
-            if (staffChan) {
-                const embed = new EmbedBuilder()
-                    .setTitle('<a:announcement:1531251217525768324> NEW STAFF APPLICATION SUBMITTED')
-                    .setColor('#00FFCC')
-                    .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-                    .addFields(
-                        { name: '👤 Applicant Details', value: `${message.author} (\`${message.author.id}\`)`, inline: false }
+            if (config && config.appStaffChannelId) {
+                const staffChan = message.guild.channels.cache.get(config.appStaffChannelId) || await message.guild.channels.fetch(config.appStaffChannelId).catch(() => null);
+                if (staffChan) {
+                    const embed = new EmbedBuilder()
+                        .setTitle('<a:announcement:1531251217525768324> NEW STAFF APPLICATION SUBMITTED')
+                        .setColor('#00FFCC')
+                        .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                        .addFields(
+                            { name: '👤 Applicant Details', value: `${message.author} (\`${message.author.id}\`)`, inline: false }
+                        );
+
+                    questions.forEach((q, idx) => {
+                        embed.addFields({ name: `Q${idx + 1}: ${q}`, value: activeSession.answers[idx] || 'No response provided', inline: false });
+                    });
+
+                    const evalRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(`app_approve_${message.author.id}`).setLabel('Approve').setEmoji('<a:confirm:153125116167643206>').setStyle(ButtonStyle.Success),
+                        new ButtonBuilder().setCustomId(`app_reject_${message.author.id}`).setLabel('Reject').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger)
                     );
 
-                questions.forEach((q, idx) => {
-                    embed.addFields({ name: `Q${idx + 1}: ${q}`, value: activeSession.answers[idx] || 'No response provided', inline: false });
-                });
-
-                const evalRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`app_approve_${message.author.id}`).setLabel('Approve').setEmoji('<a:confirm:153125116167643206>').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId(`app_reject_${message.author.id}`).setLabel('Reject').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger)
-                );
-
-                await staffChan.send({ embeds: [embed], components: [evalRow] });
+                    await staffChan.send({ embeds: [embed], components: [evalRow] }).catch((e) => console.error("Failed to send staff embed:", e));
+                }
             }
 
-            setTimeout(async () => {
-                try {
-                    await targetChannel.delete();
-                } catch (e) {
-                    console.error("Failed to delete application channel:", e);
-                }
+            setTimeout(() => {
+                targetChannel.delete().catch(() => {});
             }, 5000);
         }
         return;
