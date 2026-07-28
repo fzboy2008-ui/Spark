@@ -122,7 +122,8 @@ client.on('messageCreate', async (message) => {
 
         if (activeSession.currentQuestionIndex < questions.length) {
             const nextQ = questions[activeSession.currentQuestionIndex];
-            await message.channel.send({ content: `<a:report:1531250976617402418> ${message.author}, **Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
+            // Ping hatakar simple clean question format kar diya hai
+            await message.channel.send({ content: `<a:report:1531250976617402418> **Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
@@ -423,6 +424,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
 
                 const firstQ = config.appQuestions[0] || 'What is your full name and age?';
+                // Yahan se bhi user aur staff role ka ping completely remove kar diya hai
                 await appChannel.send({ content: `<a:report:1531250976617402418> **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
                 return await interaction.reply({ content: `✅ Application channel successfully created: ${appChannel}`, ephemeral: true });
             }
@@ -704,7 +706,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ content: `✅ Successfully deployed the Staff Application panel in <#${targetChanId}>` });
             }
 
-                        if (interaction.customId === 'modal_ticket') {
+            if (interaction.customId === 'modal_ticket') {
                 const logsData = interaction.fields.getTextInputValue('t_logs').split(',');
                 const cats = interaction.fields.getTextInputValue('t_cats').split(',').map(c => c.trim());
                 const descData = interaction.fields.getTextInputValue('t_desc').split('||');
