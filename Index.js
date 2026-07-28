@@ -913,34 +913,39 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         // 4. SELECT MENUS HANDLER
-            if (interaction.customId === 'modal_ticket') {
-                const logsData = interaction.fields.getTextInputValue('t_logs').split(',');
-                const cats = interaction.fields.getTextInputValue('t_cats').split(',').map(c => c.trim());
-                const descData = interaction.fields.getTextInputValue('t_desc').split('||');
-                const panelDescription = descData[0]?.trim();
-                const panelImage = descData[1]?.trim() || '';
+        if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'ticket_select') {
+                const config = await GuildConfig.findOne({ guildId });
+                if (!config) return;
 
-                await GuildConfig.findOneAndUpdate({ guildId }, {
-                    ticketDescription: panelDescription,
-                    ticketParent: interaction.fields.getTextInputValue('t_parent'),
-                    ticketLogs: logsData[0]?.trim(),
-                    ticketRole: logsData[1]?.trim(),
-                    ticketMessage: interaction.fields.getTextInputValue('t_msg').trim()
-                }, { upsert: true, new: true });
-
-                const embed = new EmbedBuilder().setTitle('🎫 Create a Ticket').setDescription(panelDescription).setColor('#5865F2');
-                if (panelImage && panelImage.startsWith('http')) {
-                    embed.setImage(panelImage);
+                const selectedCategory = interaction.values[0]; 
+                const name = `ticket-${interaction.user.username.toLowerCase()}`;
+                
+                if (interaction.guild.channels.cache.find(c => c.name === name || c.name.startsWith(`claimed-${interaction.user.username.toLowerCase()}`))) {
+                    return await interaction.reply({ content: '❌ You already have an active ticket.', ephemeral: true });
                 }
+                
+                await interaction.deferReply({ ephemeral: true });
+                const ch = await interaction.guild.channels.create({
+                    name, parent: config.ticketParent || null,
+                    permissionOverwrites: [
+                        { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+                        ...(config.ticketRole ? [{ id: config.ticketRole, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }] : [])
+                    ]
+                });
 
-                const options = cats.map(cat => ({ label: cat, value: cat }));
-                const menu = new StringSelectMenuBuilder()
-                    .setCustomId('ticket_select')
-                    .setPlaceholder('🎫 Select a ticket category...')
-                    .addOptions(options);
+                let parsedMessage = config.ticketMessage || 'Thank you for contacting support.';
+                parsedMessage = parsedMessage.replace(/{user}/g, `${interaction.user}`).replace(/{{User.Mention}}/g, `${interaction.user}`).replace(/{{user.mention}}/g, `${interaction.user}`);
+                
+                const staffPing = config.ticketRole ? `<@&${config.ticketRole}>` : '';
+                const fullPingContent = `${interaction.user} ${staffPing}`;
 
-                await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
-                return await interaction.editReply({ content: '✅ Deployed Support Tickets Panel Successfully!' });
+                const embed = new EmbedBuilder().setTitle('🎫 Ticket Support Terminal').setDescription(parsedMessage).addFields({ name: '🗂️ Category', value: `\`${selectedCategory}\``, inline: false }).setColor('#00ffcc');
+                const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger));
+
+                await ch.send({ content: fullPingContent, embeds: [embed], components: [row] });
+                return await interaction.editReply({ content: `Generated: ${ch}` });
             }
 
             const store = await GuildStore.findOne({ guildId });
@@ -950,14 +955,14 @@ client.on('interactionCreate', async (interaction) => {
                 const chosenCat = interaction.values[0].replace('store_cat_', '');
                 const filteredItems = store.items.filter(i => i.category === chosenCat);
 
-                if (filteredItems.length === 0) return await interaction.reply({ content: '❌ No items available in this category.', ephemeral: true });
+                if (filteredItems.length === 0) return await interaction.reply({ content: '❌ No items in this category.', ephemeral: true });
 
                 const options = filteredItems.map(i => ({ label: `${i.name} - ${i.price} INR`, value: `store_itm_${i._id.toString()}` }));
                 const row = new ActionRowBuilder().addComponents(
-                    new StringSelectMenuBuilder().setCustomId('store_item_select').setPlaceholder('📦 Choose an item to purchase...').addOptions(options)
+                    new StringSelectMenuBuilder().setCustomId('store_item_select').setPlaceholder('📦 Choose item to buy...').addOptions(options)
                 );
 
-                return await interaction.reply({ content: `📁 Selected Category: **${chosenCat}**`, components: [row], ephemeral: true });
+                return await interaction.reply({ content: `📁 Category: **${chosenCat}**`, components: [row], ephemeral: true });
             }
 
             if (interaction.customId === 'store_item_select') {
@@ -968,7 +973,7 @@ client.on('interactionCreate', async (interaction) => {
                     new ButtonBuilder().setCustomId(`btn_trigger_checkout_${itemDbId}`).setLabel(`Order: ${targetItem.name} (${targetItem.price} INR)`).setStyle(ButtonStyle.Primary)
                 );
 
-                return await interaction.reply({ content: `🛒 Proceed to purchase **${targetItem.name}**? Click below to verify your in-game username:`, components: [buyRow], ephemeral: true });
+                return await interaction.reply({ content: `🛒 Buy **${targetItem.name}**? Click checkout below:`, components: [buyRow], ephemeral: true });
             }
         }
     } catch (err) {
