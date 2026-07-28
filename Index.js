@@ -696,7 +696,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ content: `✅ Successfully deployed the Staff Application panel in <#${targetChanId}>` });
             }
 
-            if (interaction.customId === 'modal_ticket') {
+                        if (interaction.customId === 'modal_ticket') {
                 const logsData = interaction.fields.getTextInputValue('t_logs').split(',');
                 const cats = interaction.fields.getTextInputValue('t_cats').split(',').map(c => c.trim());
                 const descData = interaction.fields.getTextInputValue('t_desc').split('||');
@@ -715,10 +715,18 @@ client.on('interactionCreate', async (interaction) => {
                 const embed = new EmbedBuilder().setTitle('🎫 Create a Ticket').setDescription(panelDescription).setColor('#5865F2');
                 if (panelBanner && panelBanner.startsWith('http')) embed.setImage(panelBanner);
 
-                const options = cats.map(cat => ({ label: cat, value: cat }));
-                const menu = new StringSelectMenuBuilder().setCustomId('ticket_select').addOptions(options);
+                const options = cats.map(cat => ({ 
+                    label: cat, 
+                    value: cat.toLowerCase().replace(/\s+/g, '_') 
+                }));
+                
+                const menu = new StringSelectMenuBuilder()
+                    .setCustomId('ticket_select')
+                    .setPlaceholder('Select a ticket category...')
+                    .addOptions(options);
+
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
-                return await interaction.editReply({ content: '✅ Support Tickets Panel deployed successfully with banner!' });
+                return await interaction.editReply({ content: '✅ Support Tickets Panel deployed successfully!' });
             }
 
             if (interaction.customId === 'modal_stats_setup') {
