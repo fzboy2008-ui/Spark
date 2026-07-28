@@ -442,7 +442,7 @@ client.on('interactionCreate', async (interaction) => {
                     const finalMsg = msgTemplate.replace(/{{server}}/g, interaction.guild.name);
                     
                     const dmEmbed = new EmbedBuilder()
-                        .setTitle(isApprove ? '<a:confirm:153125116167643206> APPLICATION APPROVED' : '<a:alert:1531250980199338064> APPLICATION DECLINED')
+                        .setTitle(isApprove ? '<a:confirm:1531251161657643206> APPLICATION APPROVED' : '<a:alert:1531250980199338064> APPLICATION DECLINED')
                         .setDescription(finalMsg)
                         .setColor(isApprove ? '#00FF00' : '#FF0000')
                         .setTimestamp();
@@ -631,7 +631,7 @@ client.on('interactionCreate', async (interaction) => {
                         const msg = msgTemplate.replace(/{{server}}/g, store?.serverName || "Server").replace(/{{item}}/g, ticket.itemName);
                         
                         const approveEmbed = new EmbedBuilder()
-                            .setTitle('<a:confirm:153125116167643206> ORDER APPROVED')
+                            .setTitle('<a:confirm:1531251161657643206> ORDER APPROVED')
                             .setDescription(msg)
                             .setColor('#00FF00')
                             .setTimestamp();
