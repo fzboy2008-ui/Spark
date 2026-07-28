@@ -914,16 +914,16 @@ client.on('interactionCreate', async (interaction) => {
 
         // 4. SELECT MENUS HANDLER
         if (interaction.isStringSelectMenu()) {
-                        if (interaction.customId === 'modal_ticket') {
+             if (interaction.customId === 'modal_ticket') {
                 const logsData = interaction.fields.getTextInputValue('t_logs').split(',');
                 const cats = interaction.fields.getTextInputValue('t_cats').split(',').map(c => c.trim());
                 const descData = interaction.fields.getTextInputValue('t_desc').split('||');
                 const panelDescription = descData[0]?.trim();
-                const panelBanner = descData[1]?.trim() || '';
+                const panelImage = descData[1]?.trim() || '';
 
                 await GuildConfig.findOneAndUpdate({ guildId }, {
                     ticketDescription: panelDescription,
-                    ticketBanner: panelBanner,
+                    ticketBanner: panelImage,
                     ticketParent: interaction.fields.getTextInputValue('t_parent'),
                     ticketLogs: logsData[0]?.trim(),
                     ticketRole: logsData[1]?.trim(),
@@ -931,14 +931,13 @@ client.on('interactionCreate', async (interaction) => {
                 }, { upsert: true, new: true });
 
                 const embed = new EmbedBuilder().setTitle('🎫 Create a Ticket').setDescription(panelDescription).setColor('#5865F2');
-                
-                if (panelBanner && panelBanner.startsWith('http')) {
-                    embed.setImage(panelBanner);
+                if (panelImage && panelImage.startsWith('http')) {
+                    embed.setImage(panelImage);
                 }
 
                 const options = cats.map(cat => ({ 
                     label: cat, 
-                    value: cat.toLowerCase().replace(/\s+/g, '_') 
+                    value: cat 
                 }));
                 
                 const menu = new StringSelectMenuBuilder()
@@ -949,6 +948,7 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
                 return await interaction.editReply({ content: '✅ Support Tickets Panel deployed successfully!' });
             }
+
 
 
             const store = await GuildStore.findOne({ guildId });
