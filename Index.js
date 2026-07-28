@@ -147,7 +147,7 @@ client.on('messageCreate', async (message) => {
                     new ButtonBuilder()
                         .setCustomId(`app_approve_${message.author.id}`)
                         .setLabel('Approve')
-                        .setEmoji({ name: 'confirm', id: '153125116167643206', animated: true })
+                        .setEmoji({ name: 'confirm', id: '1531251161657643206', animated: true })
                         .setStyle(ButtonStyle.Success),
                     new ButtonBuilder()
                         .setCustomId(`app_reject_${message.author.id}`)
