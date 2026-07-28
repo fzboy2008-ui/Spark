@@ -126,7 +126,7 @@ client.on('messageCreate', async (message) => {
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
-            await message.channel.send({ content: `<a:confirm:153125116167643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
+            await message.channel.send({ content: `<a:confirm:1531251161657643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
 
             const staffChan = message.guild.channels.cache.get(config.appStaffChannelId);
             if (staffChan) {
@@ -421,7 +421,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
 
                 const firstQ = config.appQuestions[0] || 'What is your full name and age?';
-                await appChannel.send({ content: `📝 **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
+                await appChannel.send({ content: `<a:report:1531250976617402418> **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
                 return await interaction.reply({ content: `✅ Application channel successfully created: ${appChannel}`, ephemeral: true });
             }
 
