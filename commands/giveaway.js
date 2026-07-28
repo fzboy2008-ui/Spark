@@ -24,7 +24,7 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setColor("Gold")
-                .setTitle("<a:gift:1531251179235840051> COMMUNITY GIVEAWAY STARTED <a:gift:1531251179235840051>")
+                .setTitle("<a:gift:1531251179235840051> GIVEAWAY STARTED <a:gift:1531251179235840051>")
                 .setDescription(`
 ⟢ Hosted By    : ${interaction.user}
 ⟢ Reward       : ${reward}
@@ -87,7 +87,7 @@ async function endGiveaway(messageId, client) {
 
     const embed = new EmbedBuilder()
         .setColor("DarkRed")
-        .setTitle("<a:gift:1531251179235840051> GIVEAWAY CONCLUDED <a:gift:1531251179235840051>")
+        .setTitle("<a:gift:1531251179235840051> GIVEAWAY ENDED <a:gift:1531251179235840051>")
         .setDescription(`
 ⟢ Reward       : ${giveaway.reward}
 ⟢ Total Winners: ${giveaway.winners}
