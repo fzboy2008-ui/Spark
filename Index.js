@@ -122,7 +122,8 @@ client.on('messageCreate', async (message) => {
 
         if (activeSession.currentQuestionIndex < questions.length) {
             const nextQ = questions[activeSession.currentQuestionIndex];
-            await message.channel.send({ content: `${message.author}, **Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
+            const staffRolePing = config?.appStaffRoleId ? `<@&${config.appStaffRoleId}>` : '';
+            await message.channel.send({ content: `${message.author} ${staffRolePing}\n\n📝 **Staff Application Process:**\n**Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
