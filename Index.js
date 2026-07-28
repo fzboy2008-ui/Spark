@@ -913,8 +913,7 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         // 4. SELECT MENUS HANDLER
-        if (interaction.isStringSelectMenu()) {
-             if (interaction.customId === 'modal_ticket') {
+            if (interaction.customId === 'modal_ticket') {
                 const logsData = interaction.fields.getTextInputValue('t_logs').split(',');
                 const cats = interaction.fields.getTextInputValue('t_cats').split(',').map(c => c.trim());
                 const descData = interaction.fields.getTextInputValue('t_desc').split('||');
@@ -923,7 +922,6 @@ client.on('interactionCreate', async (interaction) => {
 
                 await GuildConfig.findOneAndUpdate({ guildId }, {
                     ticketDescription: panelDescription,
-                    ticketBanner: panelImage,
                     ticketParent: interaction.fields.getTextInputValue('t_parent'),
                     ticketLogs: logsData[0]?.trim(),
                     ticketRole: logsData[1]?.trim(),
@@ -935,21 +933,15 @@ client.on('interactionCreate', async (interaction) => {
                     embed.setImage(panelImage);
                 }
 
-                const options = cats.map(cat => ({ 
-                    label: cat, 
-                    value: cat 
-                }));
-                
+                const options = cats.map(cat => ({ label: cat, value: cat }));
                 const menu = new StringSelectMenuBuilder()
                     .setCustomId('ticket_select')
                     .setPlaceholder('🎫 Select a ticket category...')
                     .addOptions(options);
 
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
-                return await interaction.editReply({ content: '✅ Support Tickets Panel deployed successfully!' });
+                return await interaction.editReply({ content: '✅ Deployed Support Tickets Panel Successfully!' });
             }
-
-
 
             const store = await GuildStore.findOne({ guildId });
             if (!store) return;
