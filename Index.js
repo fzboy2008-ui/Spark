@@ -122,8 +122,7 @@ client.on('messageCreate', async (message) => {
 
         if (activeSession.currentQuestionIndex < questions.length) {
             const nextQ = questions[activeSession.currentQuestionIndex];
-            const staffRolePing = config?.appStaffRoleId ? `<@&${config.appStaffRoleId}>` : '';
-            await message.channel.send({ content: `${message.author} ${staffRolePing}\n\n📝 **Staff Application Process:**\n**Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
+            await message.channel.send({ content: `**Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
@@ -151,12 +150,52 @@ client.on('messageCreate', async (message) => {
                 await staffChan.send({ embeds: [embed], components: [evalRow] });
             }
 
-            setTimeout(() => message.channel.delete().catch(() => {}), 5000);
+            setTimeout(async () => {
+                try {
+                    await message.channel.delete();
+                } catch (e) {
+                    console.error("Failed to delete application channel:", e);
+                }
+            }, 5000);
         }
         return;
     }
 
-    // 3. Server Auto Responses Handler
+    // 3. Staff Application Start Handler
+            if (interaction.customId === 'btn_start_staff_apply') {
+                const config = await GuildConfig.findOne({ guildId });
+                if (!config || !config.appStaffChannelId) {
+                    return await interaction.reply({ content: '❌ The staff application system has not been fully configured by administrators yet.', ephemeral: true });
+                }
+
+                const existingSession = await StaffAppSession.findOne({ userId: interaction.user.id, guildId });
+                if (existingSession) {
+                    return await interaction.reply({ content: '⚠️ You already have an active application session running in <#' + existingSession.channelId + '>', ephemeral: true });
+                }
+
+                const appChannel = await interaction.guild.channels.create({
+                    name: `app-${interaction.user.username}`,
+                    parent: config.ticketParent || null,
+                    permissionOverwrites: [
+                        { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
+                    ]
+                });
+
+                await StaffAppSession.create({
+                    userId: interaction.user.id,
+                    guildId,
+                    channelId: appChannel.id,
+                    currentQuestionIndex: 0,
+                    answers: []
+                });
+
+                const firstQ = config.appQuestions[0] || 'What is your full name and age?';
+                await appChannel.send({ content: `📝 **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
+                return await interaction.reply({ content: `✅ Application channel successfully created: ${appChannel}`, ephemeral: true });
+            }
+    
+    // 4. Server Auto Responses Handler
     const userMessage = message.content.toLowerCase();
 
     try {
