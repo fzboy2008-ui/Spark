@@ -325,6 +325,22 @@ client.on('interactionCreate', async (interaction) => {
         const guildId = interaction.guild?.id;
         if (!guildId) return;
 
+        // Strict Administrator permission check for configuration buttons/menus/modals
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
+                const allowedForEveryone = [
+                    'ticket_select', 'btn_start_staff_apply', 'claim_ticket', 'close_ticket', 
+                    'btn_trigger_checkout_', 'store_category_select', 'store_item_select', 
+                    'modal_player_checkout_', 'app_approve_', 'app_reject_'
+                ];
+                const isAllowed = allowedForEveryone.some(id => interaction.customId.startsWith(id));
+                
+                if (!isAllowed) {
+                    return interaction.reply({ content: '❌ You must have **Administrator** permissions to use this control panel.', ephemeral: true });
+                }
+            }
+        }
+
         // 1. SLASH COMMANDS
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);
