@@ -45,7 +45,7 @@ client.once('ready', async () => {
         const owner = await client.users.fetch(OWNER_ID).catch(() => null);
         if (owner) {
             const bootEmbed = new EmbedBuilder()
-                .setTitle('<a:flame:1531251059362631881> BOT STARTED SUCCESSFULLY')
+                .setTitle('🚀 BOT STARTED SUCCESSFULLY')
                 .setDescription(`Connected and active across **${client.guilds.cache.size}** servers.\nType \`!bot panel\` or \`!panel\` here in DMs to manage connected servers.`)
                 .setColor('#00FFCC')
                 .setTimestamp();
@@ -96,7 +96,7 @@ client.on('messageCreate', async (message) => {
             );
 
             const panelEmbed = new EmbedBuilder()
-                .setTitle('<a:owner_crown:1531251021936984064> BOT MANAGEMENT TERMINAL')
+                .setTitle('🤖 BOT MANAGEMENT TERMINAL')
                 .setDescription('Select a connected server from the dropdown menu below to manage or leave it.')
                 .setColor('#5865F2');
 
@@ -122,17 +122,16 @@ client.on('messageCreate', async (message) => {
 
         if (activeSession.currentQuestionIndex < questions.length) {
             const nextQ = questions[activeSession.currentQuestionIndex];
-            // Ping hatakar simple clean question format kar diya hai
             await message.channel.send({ content: `📝 **Question ${activeSession.currentQuestionIndex + 1}:** ${nextQ}` });
             await activeSession.save();
         } else {
             await StaffAppSession.deleteOne({ _id: activeSession._id });
-            await message.channel.send({ content: `<a:confirm:1531251161657643206> **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
+            await message.channel.send({ content: `✅ **Application Submitted Successfully!** Please make sure your Direct Messages (DMs) are open so you can receive updates. This channel will close in 5 seconds.` });
 
             const staffChan = message.guild.channels.cache.get(config.appStaffChannelId);
             if (staffChan) {
                 const embed = new EmbedBuilder()
-                    .setTitle('<a:report:1531250976617402418> NEW STAFF APPLICATION SUBMITTED')
+                    .setTitle('📝 NEW STAFF APPLICATION SUBMITTED')
                     .setColor('#00FFCC')
                     .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
                     .addFields(
@@ -144,16 +143,8 @@ client.on('messageCreate', async (message) => {
                 });
 
                 const evalRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`app_approve_${message.author.id}`)
-                        .setLabel('Approve')
-                        .setEmoji({ name: 'confirm', id: '1531251161657643206', animated: true })
-                        .setStyle(ButtonStyle.Success),
-                    new ButtonBuilder()
-                        .setCustomId(`app_reject_${message.author.id}`)
-                        .setLabel('Reject')
-                        .setEmoji({ name: 'alert', id: '1531250980199338064', animated: true })
-                        .setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId(`app_approve_${message.author.id}`).setLabel('Approve').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`app_reject_${message.author.id}`).setLabel('Reject').setStyle(ButtonStyle.Danger)
                 );
 
                 await staffChan.send({ embeds: [embed], components: [evalRow] });
@@ -197,7 +188,7 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error("Auto response exception:", err); }
 });
 
-// ================= WELCOME & INVITE TRACKER JOIN =================
+// ================= WELCOME & INVITE TRACKER JOIN / LEAVE LOGS =================
 client.on('guildMemberAdd', async (member) => {
     try {
         const config = await GuildConfig.findOne({ guildId: member.guild.id });
@@ -217,7 +208,7 @@ client.on('guildMemberAdd', async (member) => {
                 descText = descText.replace(/{accountCreated}/g, createdAtFormatted);
                 
                 const embed = new EmbedBuilder()
-                    .setTitle(config.welcomeTitle || '<a:welcome:1531251234147794964> WELCOME TO THE SERVER <a:welcome:1531251234147794964>')
+                    .setTitle(config.welcomeTitle || '✨ WELCOME TO THE SERVER ✨')
                     .setDescription(descText)
                     .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
                     .setColor('#FFCC00')
@@ -258,15 +249,17 @@ client.on('guildMemberAdd', async (member) => {
             else invData.permRegular += 1;
 
             await invData.save();
+        }
 
-            if (config && config.inviteLogChannel) {
-                const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
-                if (logChan) {
-                    const lifetimeTotal = invData.permRegular - invData.permLeaves - invData.permFake;
-                    const logCard = `👤 Joined Member : ${member.user.tag}\n🔗 Invited By   : ${inviter.tag}\n--------------------------------\n📊 Lifetime Stats: ${lifetimeTotal} Total (${invData.permRegular} Reg | ${invData.permLeaves} Leaves)`;
-                    const embed = new EmbedBuilder().setTitle('📥 MEMBER JOIN LOG').setDescription(logCard).setColor('#00FF00').setTimestamp();
-                    await logChan.send({ embeds: [embed] }).catch(() => null);
-                }
+        // Invite log channel detailed format ({user} joined at {time/day/date})
+        if (config && config.inviteLogChannel) {
+            const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
+            if (logChan) {
+                const nowTime = new Date().toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'medium' });
+                const inviterText = inviter ? `${inviter.tag} (\`${inviter.id}\`)` : 'Unknown / Vanety Invite URL';
+                const logDesc = `👤 **${member.user.tag}** joined at \`${nowTime}\`\n🔗 Invited By: **${inviterText}**`;
+                const embed = new EmbedBuilder().setTitle('📥 MEMBER JOIN LOG').setDescription(logDesc).setColor('#00FF00').setTimestamp();
+                await logChan.send({ embeds: [embed] }).catch(() => null);
             }
         }
     } catch (err) { console.error(err); }
@@ -278,6 +271,17 @@ client.on('guildMemberRemove', async (member) => {
         if (config && config.totalMembersChan) {
             const chan = member.guild.channels.cache.get(config.totalMembersChan);
             if (chan) await chan.setName(`🪐 Total Members: ${member.guild.memberCount}`).catch(() => null);
+        }
+
+        // Invite log channel detailed format ({user} left at {time/day/date})
+        if (config && config.inviteLogChannel) {
+            const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
+            if (logChan) {
+                const nowTime = new Date().toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'medium' });
+                const logDesc = `📤 **${member.user.tag}** left at \`${nowTime}\``;
+                const embed = new EmbedBuilder().setTitle('📤 MEMBER LEAVE LOG').setDescription(logDesc).setColor('#FF0000').setTimestamp();
+                await logChan.send({ embeds: [embed] }).catch(() => null);
+            }
         }
     } catch (err) { console.error(err); }
 });
@@ -365,7 +369,7 @@ client.on('interactionCreate', async (interaction) => {
                 }
                 str += '```';
 
-                const embed = new EmbedBuilder().setTitle('<a:trophy:1531251182713045023> TOP 10 LIFETIME INVITES LEADERBOARD').setDescription(str).setColor('#00FF00');
+                const embed = new EmbedBuilder().setTitle('🏆 TOP 10 LIFETIME INVITES LEADERBOARD').setDescription(str).setColor('#00FF00');
                 return await interaction.followUp({ embeds: [embed] });
             }
 
@@ -424,8 +428,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
 
                 const firstQ = config.appQuestions[0] || 'What is your full name and age?';
-                // Yahan se bhi user aur staff role ka ping completely remove kar diya hai
-                await appChannel.send({ content: `<a:report:1531250976617402418> **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
+                await appChannel.send({ content: `📝 **Staff Application Process Started!**\n**Question 1:** ${firstQ}` });
                 return await interaction.reply({ content: `✅ Application channel successfully created: ${appChannel}`, ephemeral: true });
             }
 
@@ -442,7 +445,7 @@ client.on('interactionCreate', async (interaction) => {
                     const finalMsg = msgTemplate.replace(/{{server}}/g, interaction.guild.name);
                     
                     const dmEmbed = new EmbedBuilder()
-                        .setTitle(isApprove ? '<a:confirm:1531251161657643206> APPLICATION APPROVED' : '<a:alert:1531250980199338064> APPLICATION DECLINED')
+                        .setTitle(isApprove ? '✅ APPLICATION APPROVED' : '❌ APPLICATION DECLINED')
                         .setDescription(finalMsg)
                         .setColor(isApprove ? '#00FF00' : '#FF0000')
                         .setTimestamp();
@@ -557,40 +560,41 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
             
-            // --- SUPPORT TICKET CLAIM & RENAME LOGIC ---
+            // --- SUPPORT TICKET CLAIM & CLOSE LOGIC (ROLE RESTRICTED) ---
             const config = await GuildConfig.findOne({ guildId });
             if (interaction.customId === 'claim_ticket') {
                 if (config && config.ticketRole && !interaction.member.roles.cache.has(config.ticketRole)) {
-                    return await interaction.reply({ content: '❌ This action is restricted to support staff members.', ephemeral: true });
+                    return await interaction.reply({ content: '❌ Only designated Support Staff can claim tickets.', ephemeral: true });
                 }
 
-                if (interaction.channel.name.startsWith('claimed-') || interaction.channel.name.startsWith('✅-claimed-')) {
+                if (interaction.channel.name.includes('✅')) {
                     return await interaction.reply({ content: '⚠️ This support ticket has already been claimed!', ephemeral: true });
                 }
 
-                const newName = interaction.channel.name.replace('ticket-', '✅-claimed-');
+                const newName = interaction.channel.name.replace('ticket-', '') + '-✅';
                 await interaction.channel.setName(newName).catch(() => {});
 
                 await interaction.reply({ content: `🔒 Ticket successfully claimed by ${interaction.user}` });
 
-                // Updated with safe object-style emojis matching your create block
                 const newRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId('claim_ticket')
                         .setLabel('Claimed')
-                        .setEmoji({ name: 'confirm', id: '1531251161657643206', animated: true })
                         .setStyle(ButtonStyle.Success)
                         .setDisabled(true),
                     new ButtonBuilder()
                         .setCustomId('close_ticket')
                         .setLabel('Close')
-                        .setEmoji({ name: 'alert', id: '1531250980199338064', animated: true })
                         .setStyle(ButtonStyle.Danger)
                 );
                 return await interaction.message.edit({ components: [newRow] });
             }
             
             if (interaction.customId === 'close_ticket') {
+                if (config && config.ticketRole && !interaction.member.roles.cache.has(config.ticketRole)) {
+                    return await interaction.reply({ content: '❌ Only designated Support Staff can close tickets.', ephemeral: true });
+                }
+
                 await interaction.reply('🔒 Closing ticket channel in 5 seconds...');
                 const fetched = await interaction.channel.messages.fetch({ limit: 100 });
                 let txt = '';
@@ -631,7 +635,7 @@ client.on('interactionCreate', async (interaction) => {
                         const msg = msgTemplate.replace(/{{server}}/g, store?.serverName || "Server").replace(/{{item}}/g, ticket.itemName);
                         
                         const approveEmbed = new EmbedBuilder()
-                            .setTitle('<a:confirm:1531251161657643206> ORDER APPROVED')
+                            .setTitle('✅ ORDER APPROVED')
                             .setDescription(msg)
                             .setColor('#00FF00')
                             .setTimestamp();
@@ -649,7 +653,7 @@ client.on('interactionCreate', async (interaction) => {
                         const msg = msgTemplate.replace(/{{server}}/g, store?.serverName || "Server").replace(/{{item}}/g, ticket.itemName);
                         
                         const rejectEmbed = new EmbedBuilder()
-                            .setTitle('<a:alert:1531250980199338064> ORDER REJECTED')
+                            .setTitle('❌ ORDER REJECTED')
                             .setDescription(msg)
                             .setColor('#FF0000')
                             .setTimestamp();
@@ -703,13 +707,13 @@ client.on('interactionCreate', async (interaction) => {
                 if (!targetChan) return await interaction.editReply({ content: '❌ Invalid channel ID provided.' });
 
                 const embed = new EmbedBuilder()
-                    .setTitle('<a:announcement:1531251217525768324> STAFF APPLICATION PANEL')
+                    .setTitle('🛡️ STAFF APPLICATION PANEL')
                     .setDescription('Interested in joining our official staff team? Click the button below to start your application process.')
                     .setColor('#5865F2')
                     .setTimestamp();
 
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('btn_start_staff_apply').setLabel('Apply for Staff').setEmoji('<a:welcome:1531251234147794964>').setStyle(ButtonStyle.Primary)
+                    new ButtonBuilder().setCustomId('btn_start_staff_apply').setLabel('Apply for Staff').setStyle(ButtonStyle.Primary)
                 );
 
                 await targetChan.send({ embeds: [embed], components: [row] });
@@ -737,7 +741,7 @@ client.on('interactionCreate', async (interaction) => {
 
                 const options = cats.map(cat => ({ 
                     label: cat, 
-                    value: cat.toLowerCase().replace(/\s+/g, '_') 
+                    value: cat 
                 }));
                 
                 const menu = new StringSelectMenuBuilder()
@@ -911,7 +915,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
 
                 const embed = new EmbedBuilder()
-                    .setTitle('<a:store_cart:1531251190275379282> NEW INBOUND ORDER')
+                    .setTitle('🛒 NEW INBOUND ORDER')
                     .setColor('#FFCC00')
                     .addFields(
                         { name: '👤 Buyer Account', value: `${interaction.user}`, inline: true },
@@ -922,8 +926,8 @@ client.on('interactionCreate', async (interaction) => {
                     .setTimestamp();
 
                 const controlRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('btn_order_approve').setLabel('Approve').setEmoji('<a:confirm:1531251161657643206>').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('btn_order_reject').setLabel('Reject').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('btn_order_approve').setLabel('Approve').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('btn_order_reject').setLabel('Reject').setStyle(ButtonStyle.Danger),
                     new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setStyle(ButtonStyle.Secondary)
                 );
 
@@ -932,22 +936,31 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // 4. SELECT MENUS HANDLER
+        // 4. SELECT MENUS HANDLER (Ticket restriction 1 per user + #0001 naming)
         if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'ticket_select') {
                 const config = await GuildConfig.findOne({ guildId });
                 if (!config) return;
 
                 const selectedCategory = interaction.values[0]; 
-                const name = `ticket-${interaction.user.username.toLowerCase()}`;
                 
-                if (interaction.guild.channels.cache.find(c => c.name === name || c.name.startsWith(`claimed-${interaction.user.username.toLowerCase()}`))) {
-                    return await interaction.reply({ content: '❌ You already have an active ticket.', ephemeral: true });
+                // Check if user already has an active ticket open
+                const existingTicket = interaction.guild.channels.cache.find(c => 
+                    (c.name.startsWith('ticket-') || c.name.includes('✅')) && 
+                    c.permissionOverwrites.cache.has(interaction.user.id)
+                );
+                if (existingTicket) {
+                    return await interaction.reply({ content: `❌ You already have an active ticket open: <#${existingTicket.id}>`, ephemeral: true });
                 }
+
+                // Generate sequential ticket number like #0001
+                const ticketCount = interaction.guild.channels.cache.filter(c => c.name.startsWith('ticket-')).size + 1;
+                const ticketNum = String(ticketCount).padStart(4, '0');
+                const channelName = `ticket-${ticketNum}`;
                 
                 await interaction.deferReply({ ephemeral: true });
                 const ch = await interaction.guild.channels.create({
-                    name, parent: config.ticketParent || null,
+                    name: channelName, parent: config.ticketParent || null,
                     permissionOverwrites: [
                         { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
                         { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
@@ -963,16 +976,8 @@ client.on('interactionCreate', async (interaction) => {
 
                 const embed = new EmbedBuilder().setTitle('🎫 Ticket Support Terminal').setDescription(parsedMessage).addFields({ name: '🗂️ Category', value: `\`${selectedCategory}\``, inline: false }).setColor('#00ffcc');
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('claim_ticket')
-                        .setLabel('Claim')
-                        .setEmoji({ name: 'confirm', id: '1531251161657643206', animated: true })
-                        .setStyle(ButtonStyle.Success),
-                    new ButtonBuilder()
-                        .setCustomId('close_ticket')
-                        .setLabel('Close')
-                        .setEmoji({ name: 'alert', id: '1531250980199338064', animated: true })
-                        .setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success), 
+                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger)
                 );
 
                 await ch.send({ content: fullPingContent, embeds: [embed], components: [row] });
@@ -1067,12 +1072,16 @@ setInterval(async () => {
             }
         }
 
-        // 4. YouTube RSS Feed Alerts (Direct Live/Uploads without restriction)
+        // 4. YouTube RSS Feed Alerts
         const yts = await GuildConfig.find({ ytChannelId: { $ne: null } });
         for (const config of yts) {
             const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${config.ytChannelId}`).catch(() => null);
             if (!feed || !feed.items || feed.items.length === 0) continue;
             const item = feed.items[0];
+            const vId = item.id.replace('yt:video:', '');
+            if (config.ytLastVideoId === vId) continue;
+            config.ytLastVideoId = vId;
+            await config.save();
             const g = await client.guilds.fetch(config.guildId).catch(() => null);
             if (!g) continue;
 
