@@ -20,7 +20,7 @@ module.exports = {
         if (sub === 'panel') {
             const embed = new EmbedBuilder()
                 .setTitle('📩 INVITE TRACKER DASHBOARD')
-                .setDescription('Manage your server invite logs channel or inspect the top lifetime invite leaderboard using the options below.')
+                .setDescription('Manage your server invite logs channel or inspect the top lifetime invite leaderboard using the buttons below.')
                 .setColor('#5865F2')
                 .setTimestamp();
 
@@ -40,7 +40,7 @@ module.exports = {
             
             const netInvites = data.regular - data.leaves - data.fake;
 
-            const card = `<:falcon_invites:899906814727057408> **${target.username.toUpperCase()} has ${netInvites} invites\n\nJoins : ${data.joins}\nLeft : ${data.leaves}\nFake : ${data.fake}\nRejoins : ${data.rejoins} ([7d](https://falconbot.xyz/7d))**\n\n<:falcon_arrow:946078583783309312> Discover new events [here](https://falconbot.xyz/events)!`;
+            const card = `**${target.username.toUpperCase()} has ${netInvites} invites\n\nJoins : ${data.joins}\nLeft : ${data.leaves}\nFake : ${data.fake}\nRejoins : ${data.rejoins}**`;
 
             const embed = new EmbedBuilder()
                 .setDescription(card)
@@ -51,4 +51,3 @@ module.exports = {
         }
     }
 };
-                                                                   
