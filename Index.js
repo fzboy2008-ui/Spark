@@ -1,10 +1,10 @@
 require('dotenv').config(); 
-const { Client, GatewayIntentBits, Collection, REST, Routes, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, AttachmentBuilder, ChannelType } = require('discord.js');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const Parser = require('rss-parser');
-const { GuildConfig, StaffAppSession } = require('./models/GuildConfig');
+const { GuildConfig, StaffAppSession, CustomVCConfig, ActiveVC } = require('./models/GuildConfig');
 const { GuildStore, OrderTicket } = require('./models/GuildStore');
 const InviteData = require('./models/InviteData');
 
@@ -19,6 +19,8 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildInvites,
+        GatewayIntentBits.DirectNames,
+        GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.DirectMessages
     ]
 });
@@ -143,8 +145,8 @@ client.on('messageCreate', async (message) => {
                 });
 
                 const evalRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`app_approve_${message.author.id}`).setLabel('Approve').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId(`app_reject_${message.author.id}`).setLabel('Reject').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId(`app_approve_${message.author.id}`).setLabel('Approve').setEmoji('<a:confirm:1531251161657643206>').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`app_reject_${message.author.id}`).setLabel('Reject').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger)
                 );
 
                 await staffChan.send({ embeds: [embed], components: [evalRow] });
@@ -188,10 +190,13 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error("Auto response exception:", err); }
 });
 
-// ================= WELCOME & INVITE TRACKER JOIN / LEAVE LOGS =================
+// ================= WELCOME & FALCON-STYLE INVITE TRACKER =================
 client.on('guildMemberAdd', async (member) => {
     try {
-        const config = await GuildConfig.findOne({ guildId: member.guild.id });
+        const guildId = member.guild.id;
+        const config = await GuildConfig.findOne({ guildId });
+        
+        // Welcome System
         if (config && config.welcomeChannel) {
             const channel = member.guild.channels.cache.get(config.welcomeChannel);
             if (channel) {
@@ -226,64 +231,115 @@ client.on('guildMemberAdd', async (member) => {
             if (chan) await chan.setName(`🪐 Total Members: ${member.guild.memberCount}`).catch(() => null);
         }
 
-        const cachedInvites = guildInvites.get(member.guild.id) || new Map();
+        // Falcon-style Invite Tracking Logic
+        const cachedInvites = guildInvites.get(guildId) || new Map();
         const newInvites = await member.guild.invites.fetch().catch(() => null);
         
         let inviter = null;
+        let usedInviteCode = null;
         if (newInvites) {
             const usedInvite = newInvites.find(inv => cachedInvites.get(inv.code) < inv.uses);
-            if (usedInvite && usedInvite.inviter) inviter = usedInvite.inviter;
+            if (usedInvite && usedInvite.inviter) {
+                inviter = usedInvite.inviter;
+                usedInviteCode = usedInvite.code;
+            }
 
             const codeUses = new Map();
             newInvites.forEach(inv => codeUses.set(inv.code, inv.uses));
-            guildInvites.set(member.guild.id, codeUses);
+            guildInvites.set(guildId, codeUses);
         }
 
+        let invData = null;
         if (inviter) {
             const accountAgeDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
             const isFake = accountAgeDays < 7;
 
-            const invData = await InviteData.findOne({ guildId: member.guild.id, userId: inviter.id }) || new InviteData({ guildId: member.guild.id, userId: inviter.id });
+            invData = await InviteData.findOne({ guildId, userId: inviter.id }) || new InviteData({ guildId, userId: inviter.id });
 
-            if (isFake) invData.permFake += 1;
-            else invData.permRegular += 1;
-
+            invData.joins += 1;
+            if (isFake) {
+                invData.fake += 1;
+            } else {
+                invData.regular += 1;
+            }
             await invData.save();
         }
 
-        // Invite log channel detailed format ({user} joined at {time/day/date})
+        // Falcon-style Join Log Format
         if (config && config.inviteLogChannel) {
             const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
             if (logChan) {
-                const nowTime = new Date().toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'medium' });
-                const inviterText = inviter ? `${inviter.tag} (\`${inviter.id}\`)` : 'Unknown / Vanety Invite URL';
-                const logDesc = `👤 **${member.user.tag}** joined at \`${nowTime}\`\n🔗 Invited By: **${inviterText}**`;
-                const embed = new EmbedBuilder().setTitle('📥 MEMBER JOIN LOG').setDescription(logDesc).setColor('#00FF00').setTimestamp();
-                await logChan.send({ embeds: [embed] }).catch(() => null);
+                const inviterTag = inviter ? `${inviter.username}` : 'unknown';
+                const totalInvs = invData ? (invData.regular - invData.leaves - invData.fake) : 0;
+                const logDesc = `• ${member} has joined ${member.guild.name}, invited by user ${inviterTag}, who has now ${totalInvs} invites`;
+                await logChan.send({ content: logDesc }).catch(() => null);
             }
         }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("GuildMemberAdd Error:", err); }
 });
 
 client.on('guildMemberRemove', async (member) => {
     try {
-        const config = await GuildConfig.findOne({ guildId: member.guild.id });
+        const guildId = member.guild.id;
+        const config = await GuildConfig.findOne({ guildId });
+        
         if (config && config.totalMembersChan) {
             const chan = member.guild.channels.cache.get(config.totalMembersChan);
             if (chan) await chan.setName(`🪐 Total Members: ${member.guild.memberCount}`).catch(() => null);
         }
 
-        // Invite log channel detailed format ({user} left at {time/day/date})
+        // Update invite leaves if we can trace who invited them (or log the leave)
         if (config && config.inviteLogChannel) {
             const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
             if (logChan) {
-                const nowTime = new Date().toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'medium' });
-                const logDesc = `📤 **${member.user.tag}** left at \`${nowTime}\``;
-                const embed = new EmbedBuilder().setTitle('📤 MEMBER LEAVE LOG').setDescription(logDesc).setColor('#FF0000').setTimestamp();
-                await logChan.send({ embeds: [embed] }).catch(() => null);
+                const logDesc = `• 📤 **${member.user.tag}** has left the server.`;
+                await logChan.send({ content: logDesc }).catch(() => null);
             }
         }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("GuildMemberRemove Error:", err); }
+});
+
+// ================= CUSTOM VC AUTO-CREATE & DELETE HANDLER =================
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try {
+        const guildId = newState.guild.id || oldState.guild.id;
+        const vcConfig = await CustomVCConfig.findOne({ guildId });
+        if (!vcConfig || !vcConfig.sourceChannelId) return;
+
+        // User joined the master source custom VC channel
+        if (newState.channelId === vcConfig.sourceChannelId) {
+            const member = newState.member;
+            const category = newState.guild.channels.cache.get(vcConfig.categoryId) || null;
+
+            const channelName = `🔊 | ${member.user.username}'s VC`;
+            const createdChannel = await newState.guild.channels.create({
+                name: channelName,
+                type: ChannelType.GuildVoice,
+                parent: category ? category.id : null,
+                permissionOverwrites: [
+                    { id: newState.guild.roles.everyone.id, allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
+                    { id: member.id, allow: [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMembers] }
+                ]
+            });
+
+            await member.voice.setChannel(createdChannel).catch(() => {});
+            await ActiveVC.create({ guildId, channelId: createdChannel.id, ownerId: member.id });
+        }
+
+        // Check if an empty custom VC needs deletion
+        if (oldState.channelId && oldState.channelId !== vcConfig.sourceChannelId) {
+            const activeRecord = await ActiveVC.findOne({ channelId: oldState.channelId });
+            if (activeRecord) {
+                const channel = oldState.guild.channels.cache.get(oldState.channelId);
+                if (channel && channel.members.size === 0) {
+                    await channel.delete().catch(() => {});
+                    await ActiveVC.deleteOne({ channelId: oldState.channelId });
+                }
+            }
+        }
+    } catch (err) {
+        console.error("CustomVC VoiceStateUpdate Error:", err);
+    }
 });
 
 // ================= DYNAMIC INTERACTIONS (ROUTER) =================
@@ -352,46 +408,41 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isButton()) {
             if (interaction.customId === 'btn_inv_guild_lb') {
                 await interaction.deferReply();
-                const fetchedInvites = await interaction.guild.invites.fetch().catch(() => null);
-                
-                let inviteMap = new Map();
-                if (fetchedInvites) {
-                    fetchedInvites.forEach(inv => {
-                        if (inv.inviter) {
-                            const prev = inviteMap.get(inv.inviter.id) || 0;
-                            inviteMap.set(inv.inviter.id, prev + inv.uses);
-                        }
-                    });
-                }
-
                 const dbData = await InviteData.find({ guildId });
-                dbData.forEach(d => {
-                    const dbTotal = d.permRegular - d.permLeaves - d.permFake;
-                    const inviterUses = inviteMap.get(d.userId) || 0;
-                    inviteMap.set(d.userId, Math.max(dbTotal, inviterUses));
-                });
 
-                const sorted = Array.from(inviteMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
+                // Sort users by net invites (regular - leaves - fake) descending
+                const sorted = dbData
+                    .map(d => ({ userId: d.userId, net: (d.regular - d.leaves - d.fake), d }))
+                    .sort((a, b) => b.net - a.net)
+                    .slice(0, 10);
 
                 if (sorted.length === 0) {
                     return await interaction.followUp({ content: '❌ No active invite statistics found in this server.' });
                 }
 
-                let str = '```text\n';
-                const medals = ['🥇', '🥈', '🥉', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️', '🎖️'];
+                let str = '';
                 for (let i = 0; i < sorted.length; i++) {
-                    const u = await interaction.client.users.fetch(sorted[i][0]).catch(() => null);
-                    str += `${medals[i]} ${i+1}. ${(u ? u.username : 'Unknown').padEnd(12, ' ')} • ${sorted[i][1]} Invites\n`;
+                    const item = sorted[i];
+                    const rankNum = i + 1;
+                    str += `#${rankNum} <@!${item.userId}> • **${item.net}** Invites (**${item.d.joins}** Joins, **${item.d.leaves}** Leaves, **${item.d.fake}** Fakes, **${item.d.rejoins}** Rejoins)\n`;
                 }
-                str += '```';
 
-                const embed = new EmbedBuilder().setTitle('🏆 TOP 10 LIFETIME INVITES LEADERBOARD').setDescription(str).setColor('#00FF00');
+                const embed = new EmbedBuilder().setTitle('🏆 FALCON-STYLE INVITE LEADERBOARD').setDescription(str).setColor('#00FF00');
                 return await interaction.followUp({ embeds: [embed] });
             }
 
             if (interaction.customId === 'btn_inv_logs_cfg') {
                 const modal = new ModalBuilder().setCustomId('modal_inv_logs').setTitle('Setup Invite Log Channel');
                 modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('inv_log_input').setLabel('Invite Log Channel ID').setRequired(true).setStyle(TextInputStyle.Short)));
+                return await interaction.showModal(modal);
+            }
+
+            if (interaction.customId === 'setup_customvc_btn') {
+                const modal = new ModalBuilder().setCustomId('modal_customvc_setup').setTitle('Setup Custom VC System');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cvc_source').setLabel('Source Join VC ID').setRequired(true).setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cvc_category').setLabel('Target Category ID').setRequired(true).setStyle(TextInputStyle.Short))
+                );
                 return await interaction.showModal(modal);
             }
 
@@ -596,11 +647,13 @@ client.on('interactionCreate', async (interaction) => {
                     new ButtonBuilder()
                         .setCustomId('claim_ticket')
                         .setLabel('Claimed')
+                        .setEmoji('<a:confirm:1531251161657643206>')
                         .setStyle(ButtonStyle.Success)
                         .setDisabled(true),
                     new ButtonBuilder()
                         .setCustomId('close_ticket')
                         .setLabel('Close')
+                        .setEmoji('<a:alert:1531250980199338064>')
                         .setStyle(ButtonStyle.Danger)
                 );
                 return await interaction.message.edit({ components: [newRow] });
@@ -658,7 +711,7 @@ client.on('interactionCreate', async (interaction) => {
                         await buyer.send({ embeds: [approveEmbed] }).catch(() => null);
                     }
                     await interaction.editReply({ content: '✅ **Order Approved!** Console command executed.' });
-                    return await interaction.message.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setStyle(ButtonStyle.Secondary))] });
+                    return await interaction.message.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Secondary))] });
                 }
 
                 if (interaction.customId === 'btn_order_reject') {
@@ -676,7 +729,7 @@ client.on('interactionCreate', async (interaction) => {
                         await buyer.send({ embeds: [rejectEmbed] }).catch(() => null);
                     }
                     await interaction.editReply({ content: '🚫 **Order Rejected!** Buyer has been notified.' });
-                    return await interaction.message.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setStyle(ButtonStyle.Secondary))] });
+                    return await interaction.message.edit({ components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Secondary))] });
                 }
 
                 if (interaction.customId === 'btn_order_delete') {
@@ -695,6 +748,13 @@ client.on('interactionCreate', async (interaction) => {
                 const channelId = interaction.fields.getTextInputValue('inv_log_input').trim();
                 await GuildConfig.findOneAndUpdate({ guildId }, { inviteLogChannel: channelId }, { upsert: true });
                 return await interaction.editReply({ content: `✅ **Saved Successfully!** Invite log channel updated to <#${channelId}>.` });
+            }
+
+            if (interaction.customId === 'modal_customvc_setup') {
+                const srcId = interaction.fields.getTextInputValue('cvc_source').trim();
+                const catId = interaction.fields.getTextInputValue('cvc_category').trim();
+                await CustomVCConfig.findOneAndUpdate({ guildId }, { sourceChannelId: srcId, categoryId: catId }, { upsert: true });
+                return await interaction.editReply({ content: `✅ **Custom VC System successfully configured!** Joining <#${srcId}> will now auto-spawn private VCs.` });
             }
 
             if (interaction.customId === 'modal_app_config') {
@@ -729,7 +789,7 @@ client.on('interactionCreate', async (interaction) => {
                     .setTimestamp();
 
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('btn_start_staff_apply').setLabel('Apply for Staff').setStyle(ButtonStyle.Primary)
+                    new ButtonBuilder().setCustomId('btn_start_staff_apply').setLabel('Apply for Staff').setEmoji('<a:confirm:1531251161657643206>').setStyle(ButtonStyle.Primary)
                 );
 
                 await targetChan.send({ embeds: [embed], components: [row] });
@@ -942,9 +1002,9 @@ client.on('interactionCreate', async (interaction) => {
                     .setTimestamp();
 
                 const controlRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('btn_order_approve').setLabel('Approve').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('btn_order_reject').setLabel('Reject').setStyle(ButtonStyle.Danger),
-                    new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setStyle(ButtonStyle.Secondary)
+                    new ButtonBuilder().setCustomId('btn_order_approve').setLabel('Approve').setEmoji('<a:confirm:1531251161657643206>').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('btn_order_reject').setLabel('Reject').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('btn_order_delete').setLabel('Delete Room').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Secondary)
                 );
 
                 await ticketRoom.send({ content: `${interaction.user} | <@&${store.adminRoleId}>`, embeds: [embed], components: [controlRow] });
@@ -992,8 +1052,8 @@ client.on('interactionCreate', async (interaction) => {
 
                 const embed = new EmbedBuilder().setTitle('🎫 Ticket Support Terminal').setDescription(parsedMessage).addFields({ name: '🗂️ Category', value: `\`${selectedCategory}\``, inline: false }).setColor('#00ffcc');
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success), 
-                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setEmoji('<a:confirm:1531251161657643206>').setStyle(ButtonStyle.Success), 
+                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setEmoji('<a:alert:1531250980199338064>').setStyle(ButtonStyle.Danger)
                 );
 
                 await ch.send({ content: fullPingContent, embeds: [embed], components: [row] });
