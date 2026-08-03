@@ -49,7 +49,23 @@ const StaffAppSessionSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now, expires: 1800 } // Auto deletes document and expires after 30 minutes (1800 seconds)
 });
 
+// Custom VC Config Schema
+const CustomVCConfigSchema = new mongoose.Schema({
+    guildId: { type: String, required: true, unique: true },
+    sourceChannelId: { type: String, required: true },
+    categoryId: { type: String, required: true }
+});
+
+// Active Custom VCs tracking Schema
+const ActiveVCSchema = new mongoose.Schema({
+    guildId: { type: String, required: true },
+    channelId: { type: String, required: true, unique: true },
+    ownerId: { type: String, required: true }
+});
+
 module.exports = {
     GuildConfig: mongoose.model('GuildConfig', GuildConfigSchema),
-    StaffAppSession: mongoose.model('StaffAppSession', StaffAppSessionSchema)
+    StaffAppSession: mongoose.model('StaffAppSession', StaffAppSessionSchema),
+    CustomVCConfig: mongoose.model('CustomVCConfig', CustomVCConfigSchema),
+    ActiveVC: mongoose.model('ActiveVC', ActiveVCSchema)
 };
