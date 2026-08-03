@@ -189,7 +189,7 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error("Auto response exception:", err); }
 });
 
-// ================= WELCOME & FALCON-STYLE INVITE TRACKER =================
+// ================= REAL-TIME INVITE TRACKER (GUILD MEMBER ADD) =================
 client.on('guildMemberAdd', async (member) => {
     try {
         const guildId = member.guild.id;
@@ -202,58 +202,45 @@ client.on('guildMemberAdd', async (member) => {
                 let descText = config.welcomeMessage || 'Welcome to the server!';
                 descText = descText
                     .replace(/{user}/g, `${member}`)
-                    .replace(/{{User.Mention}}/g, `${member}`)
-                    .replace(/{{user.mention}}/g, `${member}`)
                     .replace(/{memberCount}/g, `${member.guild.memberCount}`);
                 
-                const createdAtFormatted = member.user.createdAt.toLocaleDateString('en-GB', {
-                    day: 'numeric', month: 'long', year: 'numeric'
-                });
-                descText = descText.replace(/{accountCreated}/g, createdAtFormatted);
-                
                 const embed = new EmbedBuilder()
-                    .setTitle(config.welcomeTitle || '✨ WELCOME TO THE SERVER ✨')
+                    .setTitle(config.welcomeTitle || '✨ WELCOME ✨')
                     .setDescription(descText)
-                    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+                    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                     .setColor('#FFCC00')
-                    .setFooter({ text: `Member #${member.guild.memberCount}` })
                     .setTimestamp();
-                
-                if (config.welcomeThumbnail && config.welcomeThumbnail.startsWith('http')) {
-                    embed.setImage(config.welcomeThumbnail);
-                }
                 await channel.send({ content: `${member}`, embeds: [embed] }).catch(() => null);
             }
         }
-        if (config && config.totalMembersChan) {
-            const chan = member.guild.channels.cache.get(config.totalMembersChan);
-            if (chan) await chan.setName(`🪐 Total Members: ${member.guild.memberCount}`).catch(() => null);
-        }
 
-        // Falcon-style Invite Tracking Logic
+        // Real-Time Invite Detection Logic
         const cachedInvites = guildInvites.get(guildId) || new Map();
         const newInvites = await member.guild.invites.fetch().catch(() => null);
         
         let inviter = null;
-        let usedInviteCode = null;
         if (newInvites) {
-            const usedInvite = newInvites.find(inv => cachedInvites.get(inv.code) < inv.uses);
+            const usedInvite = newInvites.find(inv => {
+                const cachedUses = cachedInvites.get(inv.code) || 0;
+                return inv.uses > cachedUses;
+            });
+
             if (usedInvite && usedInvite.inviter) {
                 inviter = usedInvite.inviter;
-                usedInviteCode = usedInvite.code;
             }
 
+            // Update cache
             const codeUses = new Map();
             newInvites.forEach(inv => codeUses.set(inv.code, inv.uses));
             guildInvites.set(guildId, codeUses);
         }
 
-        let invData = null;
         if (inviter) {
+            let invData = await InviteData.findOne({ guildId, userId: inviter.id }) || new InviteData({ guildId, userId: inviter.id });
+
+            // Check if account age is under 7 days -> Fake
             const accountAgeDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
             const isFake = accountAgeDays < 7;
-
-            invData = await InviteData.findOne({ guildId, userId: inviter.id }) || new InviteData({ guildId, userId: inviter.id });
 
             invData.joins += 1;
             if (isFake) {
@@ -262,37 +249,36 @@ client.on('guildMemberAdd', async (member) => {
                 invData.regular += 1;
             }
             await invData.save();
-        }
 
-        // Falcon-style Join Log Format
-        if (config && config.inviteLogChannel) {
-            const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
-            if (logChan) {
-                const inviterTag = inviter ? `${inviter.username}` : 'unknown';
-                const totalInvs = invData ? (invData.regular - invData.leaves - invData.fake) : 0;
-                const logDesc = `• ${member} has joined ${member.guild.name}, invited by user ${inviterTag}, who has now ${totalInvs} invites`;
-                await logChan.send({ content: logDesc }).catch(() => null);
+            // Log in invite log channel
+            if (config && config.inviteLogChannel) {
+                const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
+                if (logChan) {
+                    const netTotal = invData.regular - invData.leaves - invData.fake;
+                    const logMsg = `• ${member} has joined the server, invited by **${inviter.username}**, who now has **${netTotal}** invites.`;
+                    await logChan.send({ content: logMsg }).catch(() => null);
+                }
+            }
+        } else {
+            if (config && config.inviteLogChannel) {
+                const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
+                if (logChan) {
+                    await logChan.send({ content: `• ${member} joined via an unknown invite or vanity URL.` }).catch(() => null);
+                }
             }
         }
-    } catch (err) { console.error("GuildMemberAdd Error:", err); }
+    } catch (err) { console.error("GuildMemberAdd Invite Error:", err); }
 });
 
 client.on('guildMemberRemove', async (member) => {
     try {
         const guildId = member.guild.id;
         const config = await GuildConfig.findOne({ guildId });
-        
-        if (config && config.totalMembersChan) {
-            const chan = member.guild.channels.cache.get(config.totalMembersChan);
-            if (chan) await chan.setName(`🪐 Total Members: ${member.guild.memberCount}`).catch(() => null);
-        }
 
-        // Update invite leaves if we can trace who invited them (or log the leave)
         if (config && config.inviteLogChannel) {
             const logChan = member.guild.channels.cache.get(config.inviteLogChannel);
             if (logChan) {
-                const logDesc = `• 📤 **${member.user.tag}** has left the server.`;
-                await logChan.send({ content: logDesc }).catch(() => null);
+                await logChan.send({ content: `• 📤 **${member.user.tag}** has left the server.` }).catch(() => null);
             }
         }
     } catch (err) { console.error("GuildMemberRemove Error:", err); }
@@ -305,7 +291,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const vcConfig = await CustomVCConfig.findOne({ guildId });
         if (!vcConfig || !vcConfig.sourceChannelId) return;
 
-        // User joined the master source custom VC channel
         if (newState.channelId === vcConfig.sourceChannelId) {
             const member = newState.member;
             const category = newState.guild.channels.cache.get(vcConfig.categoryId) || null;
@@ -325,7 +310,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             await ActiveVC.create({ guildId, channelId: createdChannel.id, ownerId: member.id });
         }
 
-        // Check if an empty custom VC needs deletion
         if (oldState.channelId && oldState.channelId !== vcConfig.sourceChannelId) {
             const activeRecord = await ActiveVC.findOne({ channelId: oldState.channelId });
             if (activeRecord) {
@@ -336,9 +320,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 }
             }
         }
-    } catch (err) {
-        console.error("CustomVC VoiceStateUpdate Error:", err);
-    }
+    } catch (err) { console.error("CustomVC Error:", err); }
 });
 
 // ================= DYNAMIC INTERACTIONS (ROUTER) =================
