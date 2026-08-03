@@ -9,7 +9,7 @@ const GuildConfigSchema = new mongoose.Schema({
     welcomeDm: { type: String, default: '' },
     
     ticketDescription: { type: String, default: '' },
-    ticketBanner: { type: String, default: '' }, // Added banner field for tickets
+    ticketBanner: { type: String, default: '' },
     ticketParent: { type: String, default: '' },
     ticketLogs: { type: String, default: '' },
     ticketRole: { type: String, default: '' },   
@@ -18,6 +18,10 @@ const GuildConfigSchema = new mongoose.Schema({
 
     totalMembersChan: { type: String, default: null },
     inviteLogChannel: { type: String, default: null },
+
+    // Custom Voice Channel (Join-to-Create) Config
+    customVcCreatorId: { type: String, default: null },
+    customVcCategoryId: { type: String, default: null },
 
     // Staff Application Config
     appChannelId: { type: String, default: null },
@@ -30,6 +34,7 @@ const GuildConfigSchema = new mongoose.Schema({
     ytChannelId: { type: String, default: null },
     ytLiveChannel: { type: String, default: null },
     ytUploadChannel: { type: String, default: null },
+    ytLastVideoId: { type: String, default: null },
 
     autoResponses: [
         {
@@ -39,14 +44,13 @@ const GuildConfigSchema = new mongoose.Schema({
     ]
 });
 
-// Staff Application Session Schema with timestamp tracking for 30 min auto-expire
 const StaffAppSessionSchema = new mongoose.Schema({
     userId: { type: String, required: true },
     guildId: { type: String, required: true },
     channelId: { type: String, required: true },
     currentQuestionIndex: { type: Number, default: 0 },
     answers: [String],
-    createdAt: { type: Date, default: Date.now, expires: 1800 } // Auto deletes document and expires after 30 minutes (1800 seconds)
+    createdAt: { type: Date, default: Date.now, expires: 1800 } 
 });
 
 module.exports = {
