@@ -26,9 +26,9 @@ module.exports = {
                     .setEmoji('<a:welcome:1531251234147794964>')
                     .setStyle(ButtonStyle.Success),
                 new ButtonBuilder()
-                    .setCustomId('setup_stats_btn')
-                    .setLabel('Stats')
-                    .setEmoji('<a:report:1531250976617402418>')
+                    .setCustomId('setup_customvc_btn')
+                    .setLabel('Custom VC')
+                    .setEmoji('<a:store_cart:1531251190275379282>')
                     .setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder()
                     .setCustomId('setup_youtube_btn')
