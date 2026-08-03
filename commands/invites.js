@@ -36,17 +36,13 @@ module.exports = {
             await interaction.deferReply();
 
             const target = interaction.options.getUser('user') || interaction.user;
-            const data = await InviteData.findOne({ guildId, userId: target.id }) || { permRegular: 0, permLeaves: 0, permFake: 0 };
+            const data = await InviteData.findOne({ guildId, userId: target.id }) || { joins: 0, regular: 0, leaves: 0, fake: 0, rejoins: 0 };
             
-            const reg = data.permRegular;
-            const lvs = data.permLeaves;
-            const fk = data.permFake;
-            const total = reg - lvs - fk;
+            const netInvites = data.regular - data.leaves - data.fake;
 
-            const card = `👤 User Profile : ${target.tag}\n📊 Total Invites : ${total}\n--------------------------------\n🟢 Regular     : ${reg}\n🔴 Leaves      : ${lvs}\n⚠️ Fake        : ${fk}`;
+            const card = `<:falcon_invites:899906814727057408> **${target.username.toUpperCase()} has ${netInvites} invites\n\nJoins : ${data.joins}\nLeft : ${data.leaves}\nFake : ${data.fake}\nRejoins : ${data.rejoins} ([7d](https://falconbot.xyz/7d))**\n\n<:falcon_arrow:946078583783309312> Discover new events [here](https://falconbot.xyz/events)!`;
 
             const embed = new EmbedBuilder()
-                .setTitle('⚡ MEMBER INVITE STATISTICS')
                 .setDescription(card)
                 .setColor('#FFCC00')
                 .setTimestamp();
@@ -55,3 +51,4 @@ module.exports = {
         }
     }
 };
+                                                                   
