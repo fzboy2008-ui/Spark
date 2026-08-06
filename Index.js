@@ -279,9 +279,14 @@ client.on('guildMemberAdd', async (member) => {
                     .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                     .setColor('#FFCC00')
                     .setTimestamp();
+
+                // Yahan database se banner URL uthakar embed mein image set karega
+                if (config.welcomeThumbnail && config.welcomeThumbnail.startsWith('http')) {
+                    embed.setImage(config.welcomeThumbnail);
+                }
+
                 await channel.send({ content: `${member}`, embeds: [embed] }).catch(() => null);
-            }
-        }
+                
 
         // Real-Time Invite Detection Logic
         const cachedInvites = guildInvites.get(guildId) || new Map();
