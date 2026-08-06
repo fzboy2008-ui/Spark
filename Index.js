@@ -1216,4 +1216,5 @@ setInterval(async () => {
     } catch (e) { console.error("Background Loop Exception:", e); }
 }, 60000);
 
-client.login(process.env.DISCORD_TOKEN
+client.login(process.env.DISCORD_TOKEN);
+
