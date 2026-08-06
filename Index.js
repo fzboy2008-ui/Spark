@@ -871,14 +871,14 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (interaction.customId === 'modal_welcome') {
-                await GuildConfig.findOneAndUpdate({ guildId }, {
-                    welcomeTitle: interaction.fields.getTextInputValue('w_title'),
-                    welcomeMessage: interaction.fields.getTextInputValue('w_msg'),
-                    welcomeChannel: interaction.fields.getTextInputValue('w_chan'),
-                    welcomeThumbnail: interaction.fields.getTextInputValue('w_thumb') || '',
-                    welcomeDm: interaction.fields.getTextInputValue('w_dm') || ''
-                }, { upsert: true });
-                return await interaction.editReply({ content: '✅ Welcome configuration saved successfully!' });
+               await GuildConfig.findOneAndUpdate({ guildId }, {
+               welcomeTitle: interaction.fields.getTextInputValue('w_title'),
+               welcomeMessage: interaction.fields.getTextInputValue('w_msg'),
+               welcomeChannel: interaction.fields.getTextInputValue('w_chan'),
+               welcomeThumbnail: interaction.fields.getTextInputValue('w_thumb') || '',
+               welcomeDm: interaction.fields.getTextInputValue('w_dm') || ''
+          }, { upsert: true });
+               return await interaction.editReply({ content: '✅ Welcome configuration saved successfully!' });
             }
 
             if (interaction.customId === 'modal_store_cfg') {
