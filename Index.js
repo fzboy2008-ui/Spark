@@ -47,7 +47,7 @@ client.once('ready', async () => {
         if (owner) {
             const bootEmbed = new EmbedBuilder()
                 .setTitle('🚀 BOT STARTED SUCCESSFULLY')
-                .setDescription(`Connected and active across **${client.guilds.cache.size}** servers.\nType \`!bot panel\` or \`!panel\` here in DMs to manage connected servers.`)
+                .setDescription(`Connected and active across **${client.guilds.cache.size}** servers.`)
                 .setColor('#00FFCC')
                 .setTimestamp();
             await owner.send({ embeds: [bootEmbed] });
@@ -70,7 +70,16 @@ client.once('ready', async () => {
     try { await rest.put(Routes.applicationCommands(client.user.id), { body: commandsArray }); } catch (e) { console.error("Slash Reg Error:", e); }
 });
 
-// ================= MESSAGE & OWNER DM INTERCEPTOR =================
+client.on('guildCreate', async (guild) => {
+    try {
+        const invites = await guild.invites.fetch();
+        const codeUses = new Map();
+        invites.forEach(inv => codeUses.set(inv.code, inv.uses));
+        guildInvites.set(guild.id, codeUses);
+    } catch (e) {}
+});
+
+// ================= MESSAGE, PREFIX COMMANDS (!i, !lb) & OWNER DM INTERCEPTOR =================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
@@ -111,7 +120,57 @@ client.on('messageCreate', async (message) => {
 
     if (!message.guild) return;
 
-    // 2. Staff Application Session Q&A Handler
+    // 2. Prefix Commands: !i @user, !lb, !lb total
+    const prefix = "!";
+    if (message.content.startsWith(prefix)) {
+        const args = message.content.slice(prefix.length).trim().split(/ +/);
+        const command = args.shift().toLowerCase();
+        const guildId = message.guild.id;
+
+        if (command === 'i') {
+            const target = message.mentions.users.first() || message.author;
+            const data = await InviteData.findOne({ guildId, userId: target.id }) || { joins: 0, regular: 0, leaves: 0, fake: 0, rejoins: 0 };
+            const netInvites = data.regular - data.leaves - data.fake;
+
+            const card = `**${target.username.toUpperCase()} has ${netInvites} invites\n\nJoins : ${data.joins}\nLeft : ${data.leaves}\nFake : ${data.fake}\nRejoins : ${data.rejoins}**`;
+            const embed = new EmbedBuilder().setDescription(card).setColor('#FFCC00').setTimestamp();
+            return message.reply({ embeds: [embed] });
+        }
+
+        if (command === 'lb') {
+            const subArg = args[0] ? args[0].toLowerCase() : '';
+            const dbData = await InviteData.find({ guildId });
+
+            if (subArg === 'total') {
+                const totalSorted = dbData.sort((a, b) => b.joins - a.joins).slice(0, 10);
+                if (totalSorted.length === 0) return message.reply('❌ No invite data recorded yet.');
+
+                let totalStr = '📊 **TOTAL INVITE SOURCES SUMMARY**\n\n';
+                totalSorted.forEach((d, idx) => {
+                    totalStr += `#${idx + 1} <@!${d.userId}> • Total Joins: **${d.joins}** (Regular: ${d.regular}, Fake: ${d.fake})\n`;
+                });
+                const totalEmbed = new EmbedBuilder().setTitle('📈 Total Invites Breakdown').setDescription(totalStr).setColor('#00FFCC');
+                return message.reply({ embeds: [totalEmbed] });
+            } else {
+                const sorted = dbData
+                    .map(d => ({ userId: d.userId, net: (d.regular - d.leaves - d.fake), d }))
+                    .sort((a, b) => b.net - a.net)
+                    .slice(0, 10);
+
+                if (sorted.length === 0) return message.reply('❌ No active invite statistics recorded yet.');
+
+                let str = '';
+                for (let i = 0; i < sorted.length; i++) {
+                    const item = sorted[i];
+                    str += `#${i + 1} <@!${item.userId}> • **${item.net}** Invites (**${item.d.joins}** Joins, **${item.d.leaves}** Leaves, **${item.d.fake}** Fakes, **${item.d.rejoins}** Rejoins)\n`;
+                }
+                const embed = new EmbedBuilder().setTitle('🏆 Server Invite Leaderboard').setDescription(str).setColor('#00FF00');
+                return message.reply({ embeds: [embed] });
+            }
+        }
+    }
+
+    // 3. Staff Application Session Q&A Handler
     const activeSession = await StaffAppSession.findOne({ userId: message.author.id, guildId: message.guild.id });
     if (activeSession && message.channel.id === activeSession.channelId) {
         activeSession.answers.push(message.content);
@@ -156,7 +215,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
-    // 3. Server Auto Responses Handler
+    // 4. Server Auto Responses Handler
     const userMessage = message.content.toLowerCase();
 
     try {
@@ -189,19 +248,29 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error("Auto response exception:", err); }
 });
 
-// ================= REAL-TIME INVITE TRACKER (GUILD MEMBER ADD) =================
+// ================= WELCOME (WITH PLACEHOLDERS) & REAL-TIME INVITE TRACKER =================
 client.on('guildMemberAdd', async (member) => {
     try {
         const guildId = member.guild.id;
         const config = await GuildConfig.findOne({ guildId });
         
-        // Welcome System
+        // Welcome System with Placeholders ({user}, {accountCreated}, {joined}, {memberCount})
         if (config && config.welcomeChannel) {
             const channel = member.guild.channels.cache.get(config.welcomeChannel);
             if (channel) {
                 let descText = config.welcomeMessage || 'Welcome to the server!';
+                
+                const createdAtFormatted = member.user.createdAt.toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'long', year: 'numeric'
+                });
+                const joinedAtFormatted = new Date().toLocaleString('en-GB', {
+                    dateStyle: 'full', timeStyle: 'medium'
+                });
+
                 descText = descText
                     .replace(/{user}/g, `${member}`)
+                    .replace(/{accountCreated}/g, createdAtFormatted)
+                    .replace(/{joined}/g, joinedAtFormatted)
                     .replace(/{memberCount}/g, `${member.guild.memberCount}`);
                 
                 const embed = new EmbedBuilder()
@@ -387,31 +456,6 @@ client.on('interactionCreate', async (interaction) => {
 
         // 2. BUTTON INTERACTIONS
         if (interaction.isButton()) {
-            if (interaction.customId === 'btn_inv_guild_lb') {
-                await interaction.deferReply();
-                const dbData = await InviteData.find({ guildId });
-
-                // Sort users by net invites (regular - leaves - fake) descending
-                const sorted = dbData
-                    .map(d => ({ userId: d.userId, net: (d.regular - d.leaves - d.fake), d }))
-                    .sort((a, b) => b.net - a.net)
-                    .slice(0, 10);
-
-                if (sorted.length === 0) {
-                    return await interaction.followUp({ content: '❌ No active invite statistics found in this server.' });
-                }
-
-                let str = '';
-                for (let i = 0; i < sorted.length; i++) {
-                    const item = sorted[i];
-                    const rankNum = i + 1;
-                    str += `#${rankNum} <@!${item.userId}> • **${item.net}** Invites (**${item.d.joins}** Joins, **${item.d.leaves}** Leaves, **${item.d.fake}** Fakes, **${item.d.rejoins}** Rejoins)\n`;
-                }
-
-                const embed = new EmbedBuilder().setTitle('🏆 FALCON-STYLE INVITE LEADERBOARD').setDescription(str).setColor('#00FF00');
-                return await interaction.followUp({ embeds: [embed] });
-            }
-
             if (interaction.customId === 'btn_inv_logs_cfg') {
                 const modal = new ModalBuilder().setCustomId('modal_inv_logs').setTitle('Setup Invite Log Channel');
                 modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('inv_log_input').setLabel('Invite Log Channel ID').setRequired(true).setStyle(TextInputStyle.Short)));
@@ -423,6 +467,15 @@ client.on('interactionCreate', async (interaction) => {
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cvc_source').setLabel('Source Join VC ID').setRequired(true).setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cvc_category').setLabel('Target Category ID').setRequired(true).setStyle(TextInputStyle.Short))
+                );
+                return await interaction.showModal(modal);
+            }
+
+            if (interaction.customId === 'setup_stats_btn') {
+                const modal = new ModalBuilder().setCustomId('modal_stats_setup').setTitle('📊 Server Stats & Goal Setup');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('stats_total_input').setLabel('Total Members Voice ID').setRequired(true).setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('stats_goal_input').setLabel('Member Goal (e.g. 100)').setRequired(true).setStyle(TextInputStyle.Short))
                 );
                 return await interaction.showModal(modal);
             }
@@ -547,14 +600,6 @@ client.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_app').setLabel('Approved DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmApproved || "Your order for **{{item}}** at **{{server}}** has been approved and processed successfully!")),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_rej').setLabel('Rejected DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmRejected || "Unfortunately, your order for **{{item}}** at **{{server}}** has been declined.")),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dm_pend').setLabel('Pending Reminder DM Text').setRequired(true).setStyle(TextInputStyle.Paragraph).setValue(store?.dmPendingReminder || "This is a reminder that your order for **{{item}}** at **{{server}}** is currently pending review."))
-                );
-                return await interaction.showModal(modal);
-            }
-
-            if (interaction.customId === 'setup_stats_btn') {
-                const modal = new ModalBuilder().setCustomId('modal_stats_setup').setTitle('📊 Server Stats Setup');
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('stats_total_input').setLabel('Total Members Voice ID').setRequired(true).setStyle(TextInputStyle.Short))
                 );
                 return await interaction.showModal(modal);
             }
@@ -738,6 +783,13 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ content: `✅ **Custom VC System successfully configured!** Joining <#${srcId}> will now auto-spawn private VCs.` });
             }
 
+            if (interaction.customId === 'modal_stats_setup') {
+                const tId = interaction.fields.getTextInputValue('stats_total_input').trim();
+                const goalNum = parseInt(interaction.fields.getTextInputValue('stats_goal_input').trim()) || 100;
+                await GuildConfig.findOneAndUpdate({ guildId }, { totalMembersChan: tId, memberGoal: goalNum, goalReachedSent: false }, { upsert: true });
+                return await interaction.editReply({ content: `✅ Stats channel and goal (**${goalNum}**) configured successfully!` });
+            }
+
             if (interaction.customId === 'modal_app_config') {
                 const staffChanId = interaction.fields.getTextInputValue('app_staff_chan').trim();
                 const staffRoleId = interaction.fields.getTextInputValue('app_role').trim();
@@ -808,12 +860,6 @@ client.on('interactionCreate', async (interaction) => {
 
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
                 return await interaction.editReply({ content: '✅ Support Tickets Panel deployed successfully!' });
-            }
-
-            if (interaction.customId === 'modal_stats_setup') {
-                const tId = interaction.fields.getTextInputValue('stats_total_input').trim();
-                await GuildConfig.findOneAndUpdate({ guildId }, { totalMembersChan: tId }, { upsert: true });
-                return await interaction.editReply({ content: '✅ **Member Stats Voice Channel configured successfully!**' });
             }
 
             if (interaction.customId === 'youtube_modal_submit') {
@@ -1074,17 +1120,28 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ================= TIMED LOOP =================
+// ================= TIMED LOOP (1 MINUTE INTERVAL FOR STATS & YOUTUBE FAST ALERTS) =================
 setInterval(async () => {
     try {
-        // 1. Stats Channel Update
+        // 1. Stats Channel & Goal Check
         const stats = await GuildConfig.find({ totalMembersChan: { $ne: null } });
         for (const config of stats) {
             const g = await client.guilds.fetch(config.guildId).catch(() => null);
             if (!g) continue;
-            if (config.totalMembersChan) {
-                const chan = g.channels.cache.get(config.totalMembersChan);
-                if (chan) await chan.setName(`🪐 Total Members: ${g.memberCount}`).catch(() => null);
+            
+            const chan = g.channels.cache.get(config.totalMembersChan);
+            const goal = config.memberGoal || 100;
+            if (chan) {
+                await chan.setName(`🪐 Total Members: ${g.memberCount}/${goal}`).catch(() => null);
+            }
+
+            if (g.memberCount >= goal && !config.goalReachedSent) {
+                const owner = await g.fetchOwner().catch(() => null);
+                if (owner) {
+                    owner.send(`🎉 **Congratulations!** Your server **${g.name}** has reached the member goal of **${goal}** players! Current count: **${g.memberCount}**`).catch(() => {});
+                }
+                config.goalReachedSent = true;
+                await config.save();
             }
         }
 
@@ -1129,16 +1186,20 @@ setInterval(async () => {
             }
         }
 
-        // 4. YouTube RSS Feed Alerts
+        // 4. YouTube RSS Feed Alerts (Fast & Anti-Spam Duplicate Check)
         const yts = await GuildConfig.find({ ytChannelId: { $ne: null } });
         for (const config of yts) {
             const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${config.ytChannelId}`).catch(() => null);
             if (!feed || !feed.items || feed.items.length === 0) continue;
+            
             const item = feed.items[0];
             const vId = item.id.replace('yt:video:', '');
+            
             if (config.ytLastVideoId === vId) continue;
+            
             config.ytLastVideoId = vId;
             await config.save();
+
             const g = await client.guilds.fetch(config.guildId).catch(() => null);
             if (!g) continue;
 
@@ -1147,12 +1208,12 @@ setInterval(async () => {
             if (target) {
                 const c = g.channels.cache.get(target);
                 if (c) {
-                    const msg = isLive ? `🔴 **LIVE STREAM STARTED!** \n📢 **${item.title}**\n👉 ${item.link} @everyone` : `🎬 **NEW VIDEO UPLOADED!** \n📢 **${item.title}**\n👉 ${item.link} @everyone`;
+                    const msg = isLive ? `🔴 **LIVE STREAM STARTED!** \n📢 **${item.title}**\n👉 ${item.link}` : `🎬 **NEW VIDEO UPLOADED!** \n📢 **${item.title}**\n👉 ${item.link}`;
                     await c.send({ content: msg }).catch(() => null);
                 }
             }
         }
     } catch (e) { console.error("Background Loop Exception:", e); }
-}, 300000);
+}, 60000);
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN
