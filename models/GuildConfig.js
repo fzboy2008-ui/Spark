@@ -7,6 +7,10 @@ const GuildConfigSchema = new mongoose.Schema({
     welcomeChannel: { type: String, default: '' },
     welcomeThumbnail: { type: String, default: '' },
     welcomeDm: { type: String, default: '' },
+    totalMembersChan: { type: String, default: null },
+    memberGoal: { type: Number, default: 100 },
+    goalReachedSent: { type: Boolean, default: false },
+    inviteLogChannel: { type: String, default: null },
     
     ticketDescription: { type: String, default: '' },
     ticketBanner: { type: String, default: '' }, // Added banner field for tickets
